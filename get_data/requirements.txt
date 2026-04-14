@@ -1,0 +1,13 @@
+# Core dependencies
+curl_cffi
+tqdm
+openai
+
+# Streamlit frontend
+streamlit
+
+# 附件解析（可选）
+pypdf          # PDF 解析
+python-docx    # Word 文档解析
+openpyxl       # Excel 解析
+rarfile        # RAR 解压（需要配合 WinRAR 或 unrar 工具）
