@@ -33,10 +33,10 @@ ENV/
 # Project Specific
 *.db
 *.sqlite3
-get_data/data/output/
-get_data/data/*.json
+# get_data/data/output/
+# get_data/data/*.json
 !get_data/data/product.json
-get_data/data/index/
+# get_data/data/index/
 *.log
 .env
 .claude/
