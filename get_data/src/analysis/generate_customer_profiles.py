@@ -17,14 +17,14 @@ root_dir = Path(__file__).resolve().parents[2]
 if str(root_dir) not in sys.path:
     sys.path.append(str(root_dir))
 
-from src.config import DB_PATH, ETL_OUTPUT_DIR
+from src.config import DB_PATH, CUSTOMER_OUTPUT_DIR
 
 def generate_profiles(output_path=None):
     """
     从 tender_structured 表聚合数据并生成画像
     """
     if output_path is None:
-        output_path = ETL_OUTPUT_DIR / "customer_profiles.json"
+        output_path = CUSTOMER_OUTPUT_DIR / "customer_profiles.json"
     
     print("=" * 60)
     print(f"正在生成客户画像...")
@@ -34,8 +34,12 @@ def generate_profiles(output_path=None):
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    # 1. 获取所有结构化标讯数据
-    cursor.execute("SELECT * FROM tender_structured")
+    # 1. 获取所有结构化标讯数据，并关联原始标讯的发布日期
+    cursor.execute("""
+        SELECT ts.*, t.publish_date 
+        FROM tender_structured ts
+        LEFT JOIN tenders t ON ts.source_url = t.detail_url
+    """)
     rows = cursor.fetchall()
     
     if not rows:
@@ -130,7 +134,8 @@ def generate_profiles(output_path=None):
         p['history_tenders'].append({
             "project_name": row['project_name'],
             "budget": row['budget_amount'],
-            "date": row['created_at'],
+            "winning_amount": row['winning_amount'], # 中标金额
+            "date": row['publish_date'], # 发布日期
             "url": row['source_url']
         })
 
