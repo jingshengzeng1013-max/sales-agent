@@ -166,6 +166,10 @@ CRAWLER_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 ETL_OUTPUT_DIR = OUTPUT_DIR / "etl"
 ETL_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
+# 客户画像产出目录
+CUSTOMER_OUTPUT_DIR = OUTPUT_DIR / "customer"
+CUSTOMER_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
 # 附件下载目录（存放实际下载的附件文件）
 ATTACHMENT_DIR = DATA_DIR / "attachment"
 ATTACHMENT_DIR.mkdir(parents=True, exist_ok=True)

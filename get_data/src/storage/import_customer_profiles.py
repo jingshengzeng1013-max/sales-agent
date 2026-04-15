@@ -15,7 +15,7 @@ root_dir = Path(__file__).resolve().parents[2]
 if str(root_dir) not in sys.path:
     sys.path.append(str(root_dir))
 
-from src.config import DB_PATH, ETL_OUTPUT_DIR
+from src.config import DB_PATH, CUSTOMER_OUTPUT_DIR
 
 def init_profiles_table():
     """初始化客户画像表"""
@@ -53,7 +53,7 @@ def import_profiles(json_path=None):
     从 JSON 文件导入客户画像
     """
     if json_path is None:
-        json_path = ETL_OUTPUT_DIR / "customer_profiles.json"
+        json_path = CUSTOMER_OUTPUT_DIR / "customer_profiles.json"
     
     if not os.path.exists(json_path):
         print(f"[ERROR] JSON 文件不存在：{json_path}")

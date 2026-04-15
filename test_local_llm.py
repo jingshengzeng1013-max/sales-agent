@@ -98,6 +98,56 @@ def chat_stream(prompt: str, system_prompt: str = "You are a helpful assistant")
     print()  # 换行
 
 
+def interactive_chat():
+    """交互式对话模式"""
+    client = create_client()
+    messages = [{"role": "system", "content": "你是一个有帮助的 AI 助手。"}]
+    
+    print("\n" + "*" * 50)
+    print("进入交互模式 (输入 'exit' 或 'quit' 退出，输入 'clear' 清空上下文)")
+    print("*" * 50)
+
+    while True:
+        try:
+            user_input = input("\n用户 > ").strip()
+            
+            if not user_input:
+                continue
+            if user_input.lower() in ['exit', 'quit']:
+                print("退出对话。")
+                break
+            if user_input.lower() == 'clear':
+                messages = [{"role": "system", "content": "你是一个有帮助的 AI 助手。"}]
+                print("上下文已清空。")
+                continue
+
+            messages.append({"role": "user", "content": user_input})
+            
+            print("助手 > ", end="", flush=True)
+            response = client.chat.completions.create(
+                model=os.environ.get('LOCAL_LLM_MODEL', MODEL),
+                messages=messages,
+                stream=True,
+            )
+
+            full_reply = ""
+            for chunk in response:
+                if chunk.choices[0].delta.content:
+                    content = chunk.choices[0].delta.content
+                    print(content, end="", flush=True)
+                    full_reply += content
+            print() # 换行
+            
+            messages.append({"role": "assistant", "content": full_reply})
+
+        except KeyboardInterrupt:
+            print("\n强制退出。")
+            break
+        except Exception as e:
+            print(f"\n发生错误：{e}")
+            _print_exc_chain(e)
+
+
 def main():
     print("=" * 50)
     print("本地 LLM 调用测试")
@@ -109,52 +159,8 @@ def main():
 
     probe_openai_compat_base(base)
 
-    # 测试 1: 简单对话
-    print("\n[测试 1] 简单对话:")
-    try:
-        result = chat_simple("你好，请介绍一下自己")
-        print(f"回复：{result}")
-    except Exception as e:
-        print(f"错误：{e}")
-        _print_exc_chain(e)
-
-    # 测试 2: 流式输出
-    print("\n[测试 2] 流式输出:")
-    try:
-        chat_stream("用一句话解释什么是人工智能")
-    except Exception as e:
-        print(f"错误：{e}")
-        _print_exc_chain(e)
-
-    # 测试 3: 多轮对话
-    print("\n[测试 3] 多轮对话:")
-    try:
-        client = create_client()
-        messages = [
-            {"role": "system", "content": "你是一个编程助手"},
-            {"role": "user", "content": "Python 中如何定义一个函数？"},
-        ]
-
-        response = client.chat.completions.create(
-            model=os.environ.get('LOCAL_LLM_MODEL', MODEL),
-            messages=messages,
-            stream=False,
-        )
-        print(f"回复：{response.choices[0].message.content}")
-
-        # 继续追问
-        messages.append({"role": "assistant", "content": response.choices[0].message.content})
-        messages.append({"role": "user", "content": "能举个例子吗？"})
-
-        response2 = client.chat.completions.create(
-            model=os.environ.get('LOCAL_LLM_MODEL', MODEL),
-            messages=messages,
-            stream=False,
-        )
-        print(f"追问回复：{response2.choices[0].message.content}")
-    except Exception as e:
-        print(f"错误：{e}")
-        _print_exc_chain(e)
+    # 进入交互式对话
+    interactive_chat()
 
     print("\n" + "=" * 50)
     print("测试完成")

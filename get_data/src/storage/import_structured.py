@@ -8,6 +8,13 @@ import sqlite3
 import json
 import os
 from pathlib import Path
+import sys
+
+# 将项目根目录添加到 sys.path
+root_dir = Path(__file__).resolve().parents[2]
+if str(root_dir) not in sys.path:
+    sys.path.append(str(root_dir))
+
 from src.config import DB_PATH
 
 def init_structured_table():
@@ -15,38 +22,99 @@ def init_structured_table():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    # 创建结构化数据表
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS tender_structured (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            source_url TEXT UNIQUE,
-            project_name TEXT,
-            buyer_name_std TEXT,
-            agency_name_std TEXT,
-            province TEXT,
-            city TEXT,
-            budget_amount REAL,
-            budget_unit TEXT,
-            product_keywords TEXT,
-            application_scenario TEXT,
-            technical_requirements_summary TEXT,
-            content_summary TEXT,
-            winning_bidder TEXT,
-            winning_amount REAL,
-            winning_product TEXT,
-            contact_person TEXT,
-            contact_phone TEXT,
-            buyer_contacts TEXT,
-            agency_contacts TEXT,
-            project_contacts TEXT,
-            opportunity_score INTEGER,
-            opportunity_reason TEXT,
-            next_action TEXT,
-            llm_model TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
+    # 1. 如果表已存在，先检查结构
+    cursor.execute("PRAGMA table_info(tender_structured)")
+    columns = {column[1]: column[2] for column in cursor.fetchall()}
 
+    if not columns:
+        # 表不存在，创建新表
+        print("[DB] 正在创建 tender_structured 表...")
+        cursor.execute('''
+            CREATE TABLE tender_structured (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tender_id INTEGER,
+                source_url TEXT UNIQUE,
+                project_name TEXT,
+                buyer_name_std TEXT,
+                agency_name_std TEXT,
+                province TEXT,
+                city TEXT,
+                budget_amount REAL,
+                budget_unit TEXT,
+                product_keywords TEXT,
+                application_scenario TEXT,
+                technical_requirements_summary TEXT,
+                content_summary TEXT,
+                winning_bidder TEXT,
+                winning_amount REAL,
+                winning_product TEXT,
+                contact_person TEXT,
+                contact_phone TEXT,
+                buyer_contacts TEXT,
+                agency_contacts TEXT,
+                project_contacts TEXT,
+                opportunity_score INTEGER,
+                opportunity_reason TEXT,
+                next_action TEXT,
+                llm_model TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+    else:
+        # 表已存在，检查并修复列
+        # 如果 tender_id 有 NOT NULL 约束，我们需要移除它（通过重建表或 ALTER）
+        # 这里简单处理：如果发现 tender_id 约束导致问题，或者 source_url 缺失，我们重建表（因为是开发阶段）
+        
+        # 检查 tender_id 是否允许 NULL
+        cursor.execute("PRAGMA table_info(tender_structured)")
+        table_info = cursor.fetchall()
+        tender_id_info = next((c for c in table_info if c[1] == 'tender_id'), None)
+        
+        needs_rebuild = False
+        if tender_id_info and tender_id_info[3] == 1: # notnull == 1
+            print("[DB] 警告: tender_id 具有 NOT NULL 约束，正在准备重建表以修复...")
+            needs_rebuild = True
+        
+        if 'source_url' not in columns:
+            print("[DB] 警告: source_url 列缺失，正在准备重建表以修复...")
+            needs_rebuild = True
+
+        if needs_rebuild:
+            print("[DB] 正在重建 tender_structured 表以修复结构问题...")
+            cursor.execute("DROP TABLE tender_structured")
+            cursor.execute('''
+                CREATE TABLE tender_structured (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    tender_id INTEGER, -- 允许 NULL
+                    source_url TEXT UNIQUE,
+                    project_name TEXT,
+                    buyer_name_std TEXT,
+                    agency_name_std TEXT,
+                    province TEXT,
+                    city TEXT,
+                    budget_amount REAL,
+                    budget_unit TEXT,
+                    product_keywords TEXT,
+                    application_scenario TEXT,
+                    technical_requirements_summary TEXT,
+                    content_summary TEXT,
+                    winning_bidder TEXT,
+                    winning_amount REAL,
+                    winning_product TEXT,
+                    contact_person TEXT,
+                    contact_phone TEXT,
+                    buyer_contacts TEXT,
+                    agency_contacts TEXT,
+                    project_contacts TEXT,
+                    opportunity_score INTEGER,
+                    opportunity_reason TEXT,
+                    next_action TEXT,
+                    llm_model TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
+    cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_structured_url ON tender_structured(source_url)")
     conn.commit()
     conn.close()
     print(f"[DB] 结构化数据表初始化完成")
@@ -54,10 +122,6 @@ def init_structured_table():
 def import_structured_tenders(json_path: str, mode: str = 'append'):
     """
     从 JSON 文件导入结构化标讯数据
-    
-    Args:
-        json_path: JSON 文件路径
-        mode: 'append' (跳过已存在的 source_url) 或 'replace' (覆盖已存在的记录)
     """
     if not os.path.exists(json_path):
         print(f"[ERROR] JSON 文件不存在：{json_path}")
@@ -67,7 +131,7 @@ def import_structured_tenders(json_path: str, mode: str = 'append'):
     print(f"正在导入结构化数据: {json_path} (模式: {mode})")
     print("=" * 60)
 
-    # 确保表已创建
+    # 确保表已创建并包含所有列
     init_structured_table()
 
     with open(json_path, 'r', encoding='utf-8') as f:
@@ -75,6 +139,10 @@ def import_structured_tenders(json_path: str, mode: str = 'append'):
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
+
+    # 获取 tenders 表中的 detail_url 到 id 的映射，以便填充 tender_id
+    cursor.execute("SELECT detail_url, id FROM tenders")
+    url_to_id = {row[0]: row[1] for row in cursor.fetchall() if row[0]}
 
     inserted = 0
     updated = 0
@@ -85,8 +153,11 @@ def import_structured_tenders(json_path: str, mode: str = 'append'):
         if not source_url:
             continue
 
+        tender_id = url_to_id.get(source_url)
+
         # 准备字段数据 (处理列表和字典为 JSON 字符串)
         fields = (
+            tender_id,
             source_url,
             item.get('project_name'),
             item.get('buyer_name_std'),
@@ -99,9 +170,9 @@ def import_structured_tenders(json_path: str, mode: str = 'append'):
             item.get('application_scenario'),
             item.get('technical_requirements_summary'),
             item.get('content_summary'),
-            item.get('winning_bidder'),
+            json.dumps(item.get('winning_bidder', []), ensure_ascii=False) if isinstance(item.get('winning_bidder'), list) else item.get('winning_bidder'),
             item.get('winning_amount'),
-            item.get('winning_product'),
+            json.dumps(item.get('winning_product', []), ensure_ascii=False) if isinstance(item.get('winning_product'), list) else item.get('winning_product'),
             item.get('contact_person'),
             item.get('contact_phone'),
             json.dumps(item.get('buyer_contacts', []), ensure_ascii=False),
@@ -117,33 +188,30 @@ def import_structured_tenders(json_path: str, mode: str = 'append'):
             if mode == 'replace':
                 cursor.execute("""
                     INSERT OR REPLACE INTO tender_structured (
-                        source_url, project_name, buyer_name_std, agency_name_std,
+                        tender_id, source_url, project_name, buyer_name_std, agency_name_std,
                         province, city, budget_amount, budget_unit,
                         product_keywords, application_scenario, technical_requirements_summary,
                         content_summary, winning_bidder, winning_amount, winning_product,
                         contact_person, contact_phone, buyer_contacts, agency_contacts,
                         project_contacts, opportunity_score, opportunity_reason,
                         next_action, llm_model
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, fields)
-                if cursor.rowcount > 0:
-                    # 简单判断插入还是更新 (SQLite INSERT OR REPLACE 逻辑)
-                    # 实际生产中可能需要更复杂的逻辑来区分
-                    updated += 1
+                updated += 1
             else:
                 cursor.execute("""
                     INSERT INTO tender_structured (
-                        source_url, project_name, buyer_name_std, agency_name_std,
+                        tender_id, source_url, project_name, buyer_name_std, agency_name_std,
                         province, city, budget_amount, budget_unit,
                         product_keywords, application_scenario, technical_requirements_summary,
                         content_summary, winning_bidder, winning_amount, winning_product,
                         contact_person, contact_phone, buyer_contacts, agency_contacts,
                         project_contacts, opportunity_score, opportunity_reason,
                         next_action, llm_model
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, fields)
                 inserted += 1
-        except sqlite3.IntegrityError:
+        except sqlite3.IntegrityError as e:
             skipped += 1
             continue
         except Exception as e:
@@ -156,6 +224,13 @@ def import_structured_tenders(json_path: str, mode: str = 'append'):
     return {"success": True, "inserted": inserted, "updated": updated, "skipped": skipped}
 
 if __name__ == "__main__":
-    # 默认导入路径
-    STRUCTURED_JSON = "D:/sales_agent/get_data/data/output/etl/tenders_structured.json"
-    import_structured_tenders(STRUCTURED_JSON, mode='replace')
+    import argparse
+    parser = argparse.ArgumentParser(description="导入结构化标讯数据到数据库")
+    parser.add_argument("--json", type=str, help="结构化 JSON 文件路径")
+    parser.add_argument("--mode", type=str, choices=['append', 'replace'], default='replace', 
+                        help="导入模式: append (跳过已存在) 或 replace (覆盖已存在)")
+    
+    args = parser.parse_args()
+    
+    json_path = args.json or "D:/sales_agent/get_data/data/output/etl/tenders_structured.json"
+    import_structured_tenders(json_path, mode=args.mode)

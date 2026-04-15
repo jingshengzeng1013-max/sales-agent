@@ -4,10 +4,17 @@
 将爬取的 JSON 数据导入 SQLite tenders 表
 """
 
+import sys
+import os
 import sqlite3
 import json
-import os
 from pathlib import Path
+
+# 将项目根目录添加到 sys.path，解决直接运行脚本时的导入问题
+root_dir = Path(__file__).resolve().parents[2]
+if str(root_dir) not in sys.path:
+    sys.path.append(str(root_dir))
+
 from src.config import DB_PATH, CRAWLER_OUTPUT_DIR
 
 
@@ -21,7 +28,7 @@ def init_database():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             project_name TEXT NOT NULL,
             publish_date TEXT,
-            detail_url TEXT,
+            detail_url TEXT UNIQUE,
             content TEXT,
             buyer_name TEXT,
             agency_name TEXT,
@@ -31,6 +38,18 @@ def init_database():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    
+    # 检查并添加缺失的列 (如果表已存在但结构旧)
+    cursor.execute("PRAGMA table_info(tenders)")
+    columns = [column[1] for column in cursor.fetchall()]
+    if 'buyer_name' not in columns:
+        cursor.execute("ALTER TABLE tenders ADD COLUMN buyer_name TEXT")
+    if 'agency_name' not in columns:
+        cursor.execute("ALTER TABLE tenders ADD COLUMN agency_name TEXT")
+    if 'budget' not in columns:
+        cursor.execute("ALTER TABLE tenders ADD COLUMN budget TEXT")
+    
+    cursor.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_tenders_url ON tenders(detail_url)')
 
     conn.commit()
     conn.close()
@@ -40,9 +59,6 @@ def init_database():
 def import_tenders_from_json(json_path=None):
     """
     从 JSON 文件导入招标列表数据到 tenders 表
-
-    Args:
-        json_path: JSON 文件路径，默认使用 crawler_output/tenders_list.json
     """
     if json_path is None:
         json_path = CRAWLER_OUTPUT_DIR / "tenders_list.json"
@@ -62,16 +78,19 @@ def import_tenders_from_json(json_path=None):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    # 获取已存在的项目名
-    cursor.execute("SELECT project_name FROM tenders")
-    existing = {row[0] for row in cursor.fetchall()}
+    # 获取已存在的 URL
+    cursor.execute("SELECT detail_url FROM tenders")
+    existing_urls = {row[0] for row in cursor.fetchall() if row[0]}
 
     inserted = 0
     skipped = 0
 
     for item in data:
-        name = item.get('project_name', '')
-        if name in existing:
+        url = item.get('detail_url', '')
+        if not url:
+            continue
+            
+        if url in existing_urls:
             skipped += 1
             continue
 
@@ -79,12 +98,12 @@ def import_tenders_from_json(json_path=None):
             INSERT INTO tenders (project_name, detail_url, content, status)
             VALUES (?, ?, ?, 'new')
         """, (
-            name,
-            item.get('detail_url', ''),
+            item.get('project_name', ''),
+            url,
             item.get('content', ''),
         ))
         inserted += 1
-        existing.add(name)
+        existing_urls.add(url)
 
     conn.commit()
     conn.close()
@@ -98,9 +117,6 @@ def import_tenders_from_json(json_path=None):
 def update_tender_details_from_json(json_path=None):
     """
     从 JSON 文件更新招标详情数据到 tenders 表
-
-    Args:
-        json_path: JSON 文件路径，默认使用 crawler_output/tenders_detail.json
     """
     if json_path is None:
         json_path = CRAWLER_OUTPUT_DIR / "tenders_detail.json"
@@ -158,9 +174,6 @@ def update_tender_details_from_json(json_path=None):
 def import_attachments_from_json(json_path=None):
     """
     从 JSON 文件导入附件数据到 tender_attachments 表
-
-    Args:
-        json_path: JSON 文件路径，默认使用 crawler_output/tenders_attachments.json
     """
     if json_path is None:
         json_path = CRAWLER_OUTPUT_DIR / "tenders_attachments.json"
@@ -264,3 +277,24 @@ def import_all():
         "detail": result_detail,
         "attachment": result_attachment
     }
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="导入招标数据到数据库")
+    parser.add_argument("--list", action="store_true", help="导入招标列表 (tenders_list.json)")
+    parser.add_argument("--detail", action="store_true", help="更新招标详情 (tenders_detail.json)")
+    parser.add_argument("--attachments", action="store_true", help="导入附件 (tenders_attachments.json)")
+    parser.add_argument("--all", action="store_true", help="导入所有数据 (列表+详情+附件)")
+    
+    args = parser.parse_args()
+    
+    if args.all or (not args.list and not args.detail and not args.attachments):
+        import_all()
+    else:
+        if args.list:
+            import_tenders_from_json()
+        if args.detail:
+            update_tender_details_from_json()
+        if args.attachments:
+            import_attachments_from_json()
