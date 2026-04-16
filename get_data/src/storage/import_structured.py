@@ -17,6 +17,8 @@ if str(root_dir) not in sys.path:
 
 from src.config import DB_PATH
 
+import uuid
+
 def init_structured_table():
     """初始化结构化数据表"""
     conn = sqlite3.connect(DB_PATH)
@@ -32,6 +34,7 @@ def init_structured_table():
         cursor.execute('''
             CREATE TABLE tender_structured (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                uuid TEXT UNIQUE,
                 tender_id INTEGER,
                 source_url TEXT UNIQUE,
                 project_name TEXT,
@@ -62,8 +65,10 @@ def init_structured_table():
         ''')
     else:
         # 表已存在，检查并修复列
-        # 如果 tender_id 有 NOT NULL 约束，我们需要移除它（通过重建表或 ALTER）
-        # 这里简单处理：如果发现 tender_id 约束导致问题，或者 source_url 缺失，我们重建表（因为是开发阶段）
+        if 'uuid' not in columns:
+            print("[DB] 为 tender_structured 添加 uuid 列...")
+            cursor.execute("ALTER TABLE tender_structured ADD COLUMN uuid TEXT")
+            cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_structured_uuid ON tender_structured(uuid)")
         
         # 检查 tender_id 是否允许 NULL
         cursor.execute("PRAGMA table_info(tender_structured)")
@@ -140,9 +145,9 @@ def import_structured_tenders(json_path: str, mode: str = 'append'):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    # 获取 tenders 表中的 detail_url 到 id 的映射，以便填充 tender_id
-    cursor.execute("SELECT detail_url, id FROM tenders")
-    url_to_id = {row[0]: row[1] for row in cursor.fetchall() if row[0]}
+    # 获取 tenders 表中的 detail_url 到 (id, uuid, publish_date) 的映射，以便填充相关信息
+    cursor.execute("SELECT detail_url, id, uuid, publish_date FROM tenders")
+    url_to_info = {row[0]: (row[1], row[2], row[3]) for row in cursor.fetchall() if row[0]}
 
     inserted = 0
     updated = 0
@@ -153,11 +158,14 @@ def import_structured_tenders(json_path: str, mode: str = 'append'):
         if not source_url:
             continue
 
-        tender_id = url_to_id.get(source_url)
+        tender_info = url_to_info.get(source_url)
+        tender_id, tender_uuid, publish_date = tender_info if tender_info else (None, str(uuid.uuid4()), None)
 
         # 准备字段数据 (处理列表和字典为 JSON 字符串)
         fields = (
             tender_id,
+            tender_uuid,
+            publish_date,
             source_url,
             item.get('project_name'),
             item.get('buyer_name_std'),
@@ -188,27 +196,27 @@ def import_structured_tenders(json_path: str, mode: str = 'append'):
             if mode == 'replace':
                 cursor.execute("""
                     INSERT OR REPLACE INTO tender_structured (
-                        tender_id, source_url, project_name, buyer_name_std, agency_name_std,
+                        tender_id, uuid, publish_date, source_url, project_name, buyer_name_std, agency_name_std,
                         province, city, budget_amount, budget_unit,
                         product_keywords, application_scenario, technical_requirements_summary,
                         content_summary, winning_bidder, winning_amount, winning_product,
                         contact_person, contact_phone, buyer_contacts, agency_contacts,
                         project_contacts, opportunity_score, opportunity_reason,
                         next_action, llm_model
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, fields)
                 updated += 1
             else:
                 cursor.execute("""
                     INSERT INTO tender_structured (
-                        tender_id, source_url, project_name, buyer_name_std, agency_name_std,
+                        tender_id, uuid, publish_date, source_url, project_name, buyer_name_std, agency_name_std,
                         province, city, budget_amount, budget_unit,
                         product_keywords, application_scenario, technical_requirements_summary,
                         content_summary, winning_bidder, winning_amount, winning_product,
                         contact_person, contact_phone, buyer_contacts, agency_contacts,
                         project_contacts, opportunity_score, opportunity_reason,
                         next_action, llm_model
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, fields)
                 inserted += 1
         except sqlite3.IntegrityError as e:

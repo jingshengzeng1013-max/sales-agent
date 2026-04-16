@@ -18,6 +18,8 @@ if str(root_dir) not in sys.path:
 from src.config import DB_PATH, CRAWLER_OUTPUT_DIR
 
 
+import uuid
+
 def init_database():
     """初始化 SQLite 数据库"""
     conn = sqlite3.connect(DB_PATH)
@@ -26,6 +28,7 @@ def init_database():
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS tenders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uuid TEXT UNIQUE,
             project_name TEXT NOT NULL,
             publish_date TEXT,
             detail_url TEXT UNIQUE,
@@ -42,8 +45,9 @@ def init_database():
     # 检查并添加缺失的列 (如果表已存在但结构旧)
     cursor.execute("PRAGMA table_info(tenders)")
     columns = [column[1] for column in cursor.fetchall()]
-    if 'buyer_name' not in columns:
-        cursor.execute("ALTER TABLE tenders ADD COLUMN buyer_name TEXT")
+    if 'uuid' not in columns:
+        cursor.execute("ALTER TABLE tenders ADD COLUMN uuid TEXT")
+        cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_tenders_uuid ON tenders(uuid)")
     if 'agency_name' not in columns:
         cursor.execute("ALTER TABLE tenders ADD COLUMN agency_name TEXT")
     if 'budget' not in columns:
@@ -95,9 +99,10 @@ def import_tenders_from_json(json_path=None):
             continue
 
         cursor.execute("""
-            INSERT INTO tenders (project_name, detail_url, content, status)
-            VALUES (?, ?, ?, 'new')
+            INSERT INTO tenders (uuid, project_name, detail_url, content, status)
+            VALUES (?, ?, ?, ?, 'new')
         """, (
+            str(uuid.uuid4()),
             item.get('project_name', ''),
             url,
             item.get('content', ''),
@@ -195,6 +200,7 @@ def import_attachments_from_json(json_path=None):
         CREATE TABLE IF NOT EXISTS tender_attachments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             tender_id INTEGER,
+            tender_uuid TEXT,
             file_name TEXT NOT NULL,
             download_url TEXT NOT NULL,
             uuid TEXT,
@@ -203,6 +209,14 @@ def import_attachments_from_json(json_path=None):
             FOREIGN KEY (tender_id) REFERENCES tenders(id) ON DELETE CASCADE
         )
     """)
+    
+    # 检查并添加缺失的列
+    cursor.execute("PRAGMA table_info(tender_attachments)")
+    columns = [column[1] for column in cursor.fetchall()]
+    if 'tender_uuid' not in columns:
+        cursor.execute("ALTER TABLE tender_attachments ADD COLUMN tender_uuid TEXT")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_attachments_tender_uuid ON tender_attachments(tender_uuid)")
+
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_attachments_tender_id ON tender_attachments(tender_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_attachments_url ON tender_attachments(download_url)")
 
@@ -216,17 +230,28 @@ def import_attachments_from_json(json_path=None):
     inserted = 0
     skipped = 0
 
+    # 获取 tenders 表中的 detail_url 到 uuid 的映射
+    cursor.execute("SELECT detail_url, uuid FROM tenders")
+    url_to_uuid = {row[0]: row[1] for row in cursor.fetchall() if row[0]}
+
     for item in data:
         url = item.get('download_url', '')
         if url in existing:
             skipped += 1
             continue
 
+        # 查找对应的 tender_uuid
+        # 注意：这里假设附件 JSON 中没有直接提供 tender_uuid，需要通过关联表查找
+        # 如果有 source_html_file，可以尝试解析出关联的 tender
+        tender_uuid = None
+        # 这里逻辑可以根据实际附件数据的来源进一步优化
+        
         cursor.execute("""
-            INSERT INTO tender_attachments (tender_id, file_name, download_url, uuid, source_html_file)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO tender_attachments (tender_id, tender_uuid, file_name, download_url, uuid, source_html_file)
+            VALUES (?, ?, ?, ?, ?, ?)
         """, (
             item.get('tender_id'),
+            tender_uuid,
             item.get('file_name', ''),
             url,
             item.get('uuid'),
