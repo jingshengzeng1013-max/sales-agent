@@ -1,0 +1,329 @@
+# -*- coding: utf-8 -*-
+"""
+双路检索器：实现向量检索 (FAISS) + 关键词检索 (BM25)
+"""
+
+import os
+import sys
+import json
+import numpy as np
+import faiss
+import jieba
+from rank_bm25 import BM25Okapi
+from typing import List, Dict, Any
+from pathlib import Path
+
+# 将项目根目录添加到 sys.path
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+sys.path.append(str(BASE_DIR))
+
+from src.config import EMBEDDING_CONFIG, INDEX_DIR, TENDER_INDEX_DIR
+from src.vectorization.vectorize_data import Vectorizer
+
+class DualRetriever:
+    def __init__(self, data_type: str = "product"):
+        """
+        :param data_type: "product" 或 "tender"
+        """
+        self.data_type = data_type
+        self.vectorizer = Vectorizer()
+        self.dimension = EMBEDDING_CONFIG.get("dimension", 1024)
+        
+        # 设置路径
+        if data_type == "product":
+            self.index_path = INDEX_DIR / "product.index"
+            self.id_map_path = INDEX_DIR / "product_ids.json"
+            self.raw_data_path = BASE_DIR / "data/embedding/product_embedded.json"
+        else:
+            self.index_path = TENDER_INDEX_DIR / "tenders.index"
+            self.id_map_path = TENDER_INDEX_DIR / "tenders_ids.json"
+            self.raw_data_path = BASE_DIR / "data/embedding/tenders_embedded.json"
+            
+        self.load_resources()
+
+    def load_resources(self):
+        """加载索引、ID映射和原始数据"""
+        print(f"[INFO] 正在加载 {self.data_type} 检索资源...")
+        
+        # 1. 加载 FAISS 索引
+        if os.path.exists(self.index_path):
+            self.index = faiss.read_index(str(self.index_path))
+        else:
+            print(f"[ERROR] 索引文件不存在: {self.index_path}")
+            self.index = None
+
+        # 2. 加载 ID 映射
+        if os.path.exists(self.id_map_path):
+            with open(self.id_map_path, 'r', encoding='utf-8') as f:
+                self.ids = json.load(f)
+        else:
+            self.ids = []
+
+        # 3. 加载原始数据并构建 BM25 索引
+        if os.path.exists(self.raw_data_path):
+            print(f"[INFO] 正在为 {self.data_type} 构建 BM25 索引 (流式处理)...")
+            self.data_dict = {}
+            self.raw_data = [] # 保持与 corpus 顺序一致
+            corpus = []
+            
+            # 使用流式读取或分块处理（这里先简单处理，只存必要字段以节省内存）
+            with open(self.raw_data_path, 'r', encoding='utf-8') as f:
+                temp_data = json.load(f)
+                
+            for item in temp_data:
+                # 统一 ID 提取逻辑：优先使用 uuid，其次是 id 或 project_id
+                item_id = str(item.get('uuid') or item.get('id') or item.get('project_id') or "")
+                if not item_id:
+                    continue
+                    
+                # 内存优化：剔除 embedding
+                display_item = {k: v for k, v in item.items() if k != 'embedding'}
+                # 确保 ID 字段存在于 display_item 中供后续使用
+                if 'uuid' not in display_item: display_item['uuid'] = item_id
+                
+                self.data_dict[item_id] = display_item
+                self.raw_data.append(display_item)
+                
+                # 为 BM25 准备语料
+                text = f"{item.get('name', '')} {item.get('project_name', '')} {item.get('description', '')} "
+                text += " ".join(item.get('features', [])) + " "
+                text += " ".join(item.get('product_keywords', []))
+                words = list(jieba.cut(text))
+                corpus.append(words)
+            
+            self.bm25 = BM25Okapi(corpus) if corpus else None
+            del temp_data # 显式释放大对象
+        else:
+            self.raw_data = []
+            self.bm25 = None
+
+    def bm25_search(self, query_text: str, top_k: int = 10) -> List[Dict]:
+        """BM25 关键词检索"""
+        if not self.bm25:
+            return []
+            
+        # 1. 分词
+        query_words = list(jieba.cut(query_text))
+        
+        # 2. 获取得分
+        scores = self.bm25.get_scores(query_words)
+        
+        # 3. 排序并取 TopK
+        top_indices = np.argsort(scores)[::-1][:top_k]
+        
+        results = []
+        for idx in top_indices:
+            if scores[idx] > 0: # 过滤掉得分为0的
+                item = self.raw_data[idx]
+                item_id = str(item.get('uuid') or item.get('id') or item.get('project_id'))
+                results.append({
+                    "id": item_id,
+                    "score": float(scores[idx]),
+                    "data": item,
+                    "method": "bm25"
+                })
+        return results
+
+    def hybrid_search(self, query_text: str, top_k: int = 10, query_vector: np.ndarray = None, 
+                      vector_weight: float = 0.5, bm25_weight: float = 0.5,
+                      province: str = None, notice_type: str = None,
+                      aggregate_by_project: bool = True,
+                      exclude_won: bool = False,
+                      sort_by: str = "score") -> List[Dict]:
+        """
+        双路检索 + RRF (Reciprocal Rank Fusion) 融合
+        :param vector_weight: 向量检索权重 (0-1)
+        :param bm25_weight: BM25 检索权重 (0-1)
+        :param province: 地区筛选
+        :param notice_type: 公告类型筛选 (招标/中标/...)
+        :param aggregate_by_project: 是否按项目汇总显示
+        :param exclude_won: 是否排除已中标项目
+        :param sort_by: 排序方式 ("score" 或 "date")
+        """
+        # 1. 向量检索
+        if query_vector is None:
+            query_vector = np.array(self.vectorizer.get_embeddings([query_text])).astype('float32')
+        
+        faiss.normalize_L2(query_vector)
+        # 扩大候选集以支持后续筛选和汇总
+        search_k = top_k * 50 if (province or notice_type or aggregate_by_project) else top_k * 5
+        distances, indices = self.index.search(query_vector, search_k)
+        
+        v_results_dict = {}
+        for i in range(len(indices[0])):
+            idx = indices[0][i]
+            score = float(distances[0][i])
+            if idx < len(self.ids):
+                item_id = self.ids[idx]
+                # 预筛选逻辑
+                item = self.data_dict.get(item_id)
+                if not item: continue
+                
+                if province and province not in item.get('province', ''): continue
+                if notice_type and notice_type not in item.get('project_name', ''): continue
+                
+                v_results_dict[item_id] = {"rank": len(v_results_dict), "score": score}
+                if len(v_results_dict) >= search_k: break
+
+        # 2. BM25 检索
+        b_results_dict = {}
+        if self.bm25:
+            query_words = list(jieba.cut(query_text))
+            bm25_scores = self.bm25.get_scores(query_words)
+            top_b_indices = np.argsort(bm25_scores)[::-1]
+            
+            # 归一化 BM25 分数
+            max_bm25 = np.max(bm25_scores) if len(bm25_scores) > 0 else 1.0
+            if max_bm25 == 0: max_bm25 = 1.0
+
+            count = 0
+            for idx in top_b_indices:
+                if bm25_scores[idx] <= 0: break
+                
+                item = self.raw_data[idx]
+                item_id = str(item.get('uuid') or item.get('id') or item.get('project_id') or "")
+                if not item_id: continue
+                
+                # 预筛选逻辑
+                if province and province not in item.get('province', ''): continue
+                if notice_type and notice_type not in item.get('project_name', ''): continue
+                
+                b_results_dict[item_id] = {
+                    "rank": count, 
+                    "score": float(bm25_scores[idx]),
+                    "norm_score": float(bm25_scores[idx] / max_bm25)
+                }
+                count += 1
+                if count >= search_k: break
+        
+        # 3. RRF 融合逻辑
+        combined_scores = {}
+        k = 60 # RRF 常数
+        
+        # 合并所有 ID
+        all_ids = set(v_results_dict.keys()) | set(b_results_dict.keys())
+        
+        for item_id in all_ids:
+            v_info = v_results_dict.get(item_id)
+            b_info = b_results_dict.get(item_id)
+            
+            # 计算 RRF 分数
+            rrf_score = 0.0
+            if v_info:
+                rrf_score += vector_weight * (1.0 / (k + v_info["rank"] + 1))
+            if b_info:
+                rrf_score += bm25_weight * (1.0 / (k + b_info["rank"] + 1))
+                
+            combined_scores[item_id] = {
+                "rrf_score": rrf_score,
+                "vector_score": v_info["score"] if v_info else 0.0,
+                "bm25_score": b_info["score"] if b_info else 0.0,
+                "bm25_norm_score": b_info["norm_score"] if b_info else 0.0
+            }
+            
+        # 4. 按项目汇总逻辑 (如果启用)
+        if aggregate_by_project and self.data_type == "tender":
+            # 加载汇总后的项目数据
+            agg_path = BASE_DIR / "data/output/etl/projects_aggregated.json"
+            if os.path.exists(agg_path):
+                with open(agg_path, 'r', encoding='utf-8') as f:
+                    agg_projects = json.load(f)
+                
+                # 构建 URL 到项目模块的映射
+                url_to_project = {}
+                for proj in agg_projects:
+                    for event in proj.get('events', []):
+                        url_to_project[event.get('url')] = proj
+                
+                # 按项目汇总得分
+                project_scores = {} # key: project_key (name@buyer), value: {scores_list, project_data}
+                
+                for item_id, scores in combined_scores.items():
+                    item = self.data_dict.get(item_id)
+                    if not item: continue
+                    
+                    source_url = item.get('source_url')
+                    project_module = url_to_project.get(source_url)
+                    
+                    if project_module:
+                        # 过滤逻辑：排除已中标
+                        if exclude_won and project_module.get('status') == "已中标":
+                            continue
+
+                        proj_key = f"{project_module['project_name_std']}@{project_module['buyer_name']}"
+                        if proj_key not in project_scores:
+                            project_scores[proj_key] = {
+                                "rrf_scores": [],
+                                "vector_scores": [],
+                                "bm25_scores": [],
+                                "bm25_norm_scores": [],
+                                "project_data": project_module
+                            }
+                        project_scores[proj_key]["rrf_scores"].append(scores["rrf_score"])
+                        project_scores[proj_key]["vector_scores"].append(scores["vector_score"])
+                        project_scores[proj_key]["bm25_scores"].append(scores["bm25_score"])
+                        project_scores[proj_key]["bm25_norm_scores"].append(scores["bm25_norm_score"])
+                
+                # 计算项目平均分
+                final_project_results = []
+                for proj_key, info in project_scores.items():
+                    avg_rrf = sum(info["rrf_scores"]) / len(info["rrf_scores"])
+                    avg_vector = sum(info["vector_scores"]) / len(info["vector_scores"])
+                    avg_bm25 = sum(info["bm25_scores"]) / len(info["bm25_scores"])
+                    avg_bm25_norm = sum(info["bm25_norm_scores"]) / len(info["bm25_norm_scores"])
+                    
+                    final_project_results.append({
+                        "id": proj_key,
+                        "score": round(avg_rrf * 1000, 4),
+                        "rrf_raw_score": round(avg_rrf, 6),
+                        "vector_score": round(avg_vector, 4),
+                        "bm25_score": round(avg_bm25, 2),
+                        "bm25_norm_score": round(avg_bm25_norm, 4),
+                        "data": info["project_data"],
+                        "is_aggregated": True,
+                        "match_count": len(info["rrf_scores"]),
+                        "latest_date": info["project_data"].get("latest_publish_date", "")
+                    })
+                
+                # 排序逻辑
+                if sort_by == "date":
+                    # 按时间倒序，处理 None 值情况（排在最后）
+                    return sorted(final_project_results, key=lambda x: x["latest_date"] or "", reverse=True)[:top_k]
+                else:
+                    # 默认按分数排序
+                    return sorted(final_project_results, key=lambda x: x["score"], reverse=True)[:top_k]
+
+        # 5. 默认按单条公告排序输出
+        sorted_items = sorted(combined_scores.items(), key=lambda x: x[1]["rrf_score"], reverse=True)[:top_k]
+        
+        final_results = []
+        for item_id, scores in sorted_items:
+            item = self.data_dict.get(item_id)
+            if not item:
+                continue
+                
+            final_results.append({
+                "id": item_id,
+                "score": round(scores["rrf_score"] * 1000, 4), # 放大 RRF 分数便于观察
+                "rrf_raw_score": round(scores["rrf_score"], 6),
+                "vector_score": round(scores["vector_score"], 4),
+                "bm25_score": round(scores["bm25_score"], 2),
+                "bm25_norm_score": round(scores["bm25_norm_score"], 4),
+                "data": item
+            })
+            
+        return final_results
+
+if __name__ == "__main__":
+    # 简单测试
+    retriever = DualRetriever(data_type="tender")
+    test_query = "气象站 采购 河北"
+    print(f"\n[TEST] 查询: {test_query}")
+    
+    # 测试项目汇总模式
+    results = retriever.hybrid_search(test_query, top_k=5, aggregate_by_project=True)
+    for i, res in enumerate(results):
+        status_str = f"[{res['data'].get('status')}]"
+        print(f"[{i+1}] Avg Score: {res['score']:.4f} {status_str} | {res['data'].get('project_name_std')} ({res['match_count']}条公告关联)")
+        for event in res['data'].get('events', []):
+            print(f"    - {event['type']}: {event['title']}")

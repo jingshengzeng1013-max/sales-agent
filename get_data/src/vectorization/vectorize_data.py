@@ -58,28 +58,18 @@ class Vectorizer:
         with open(product_path, 'r', encoding='utf-8') as f:
             products = json.load(f)
         
-        # 构建用于向量化的文本内容（聚焦产品能力与匹配）
+        # 构建用于向量化的文本内容：全部字段拼接在一起
         texts_to_embed = []
         for p in products:
-            # 采用“功能-特性-场景”三位一体拼接，去掉泛化的“领域/分类”
-            # 这种格式最有利于与标讯中的“技术要求”和“采购内容”进行语义对齐
-            name = p.get('name', '')
-            desc = p.get('description', '')
-            features = " ".join(p.get('features', []))
-            use_cases = " ".join(p.get('use_cases', []))
-            keywords = " ".join(p.get('keywords', []))
-            
-            content = f"产品名称: {name} | "
-            content += f"核心功能: {desc} | "
-            content += f"关键特性: {features} | "
-            content += f"解决场景: {use_cases} | "
-            content += f"技术关键词: {keywords}"
-            
-            texts_to_embed.append(content)
+            # 将所有非 embedding 字段的值拼接在一起
+            full_text = " ".join([str(v) for k, v in p.items() if k != 'embedding' and v])
+            texts_to_embed.append(full_text)
+            # 记录拼接后的内容，方便后续排查
+            p['embedded_content'] = full_text
         
         # 使用进度条处理
         embeddings = []
-        batch_size = 10 # 产品通常不多，批次可以小一点
+        batch_size = 10
         for i in tqdm(range(0, len(texts_to_embed), batch_size), desc="产品向量化"):
             batch = texts_to_embed[i:i+batch_size]
             embeddings.extend(self.get_embeddings(batch))
@@ -102,29 +92,41 @@ class Vectorizer:
             print(f"[ERROR] 文件不存在: {tender_path}")
             return
 
-        with open(tender_path, 'r', encoding='utf-8') as f:
-            tenders = json.load(f)
+        # 从数据库获取最新的结构化数据（包含 publish_date 等）
+        import sqlite3
+        from src.config import DB_PATH
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM tender_structured")
+        tenders = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        
+        if not tenders:
+            print("[WARNING] 数据库中没有结构化数据，尝试从 JSON 加载...")
+            with open(tender_path, 'r', encoding='utf-8') as f:
+                tenders = json.load(f)
         
         # 构建用于向量化的文本内容（聚焦需求匹配）
         texts_to_embed = []
         for t in tenders:
-            # 采用“项目-关键词-需求-技术”拼接，去掉泛化的“领域”
-            # 这种格式最有利于与产品中的“功能-特性-场景”进行语义对齐
-            project = t.get('project_name', '')
-            keywords = ", ".join(t.get('product_keywords', []))
+            # 针对用户端（标讯），对重点字段进行拼接
+            keywords = ", ".join(t.get('product_keywords', [])) if isinstance(t.get('product_keywords'), list) else str(t.get('product_keywords', ''))
             scenario = t.get('application_scenario', '')
             tech = t.get('technical_requirements_summary', '')
+            content_summary = t.get('content_summary', '')
+            winning_product = ", ".join(t.get('winning_product', [])) if isinstance(t.get('winning_product'), list) else str(t.get('winning_product', ''))
             
-            content = f"采购项目: {project} | "
-            content += f"采购关键词: {keywords} | "
-            content += f"应用需求: {scenario} | "
-            content += f"具体技术要求: {tech}"
-            
-            # 提取中标信息（如果有）
-            if t.get('winning_bidder'):
-                content += f" | 中标人: {t['winning_bidder']}"
+            # 拼接重点信息
+            content = f"采购关键词: {keywords} | "
+            content += f"应用场景: {scenario} | "
+            content += f"技术要求摘要: {tech} | "
+            content += f"内容摘要: {content_summary} | "
+            content += f"中标产品: {winning_product}"
             
             texts_to_embed.append(content)
+            # 记录拼接后的内容
+            t['embedded_content'] = content
         
         # 批量处理，带进度条
         batch_size = 20
