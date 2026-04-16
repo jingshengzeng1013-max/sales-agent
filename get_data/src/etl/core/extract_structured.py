@@ -9,6 +9,8 @@ import sys
 import os
 import re
 import logging
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from tqdm import tqdm
 
@@ -73,13 +75,15 @@ class TokenCounter:
         self.model_name = model_name
         self.pricing = MODEL_PRICING.get(model_name, DEEPSEEK_PRICING)
         self.estimate_cost = estimate_cost
+        self._lock = threading.Lock()
 
     def add(self, usage):
         """添加一次调用的 token 使用"""
-        self.prompt_tokens += usage.prompt_tokens
-        self.completion_tokens += usage.completion_tokens
-        self.total_tokens += usage.total_tokens
-        self.call_count += 1
+        with self._lock:
+            self.prompt_tokens += usage.prompt_tokens
+            self.completion_tokens += usage.completion_tokens
+            self.total_tokens += usage.total_tokens
+            self.call_count += 1
 
     def get_summary(self):
         """获取统计摘要"""
@@ -218,7 +222,8 @@ def call_llm(input_data, model_name: str | None = None):
             max(1, int(os.environ.get("EXTRACT_MAX_TOKENS", "8192"))),
         )
     else:
-        max_tokens = max(1, int(os.environ.get("EXTRACT_MAX_TOKENS", "40960")))
+        # 32路并行时，建议单条输出限制在 16k 左右，足以容纳结构化 JSON，同时节省显存给并发
+        max_tokens = max(1, int(os.environ.get("EXTRACT_MAX_TOKENS", "32768")))
 
     try:
         response = client.chat.completions.create(
@@ -231,21 +236,25 @@ def call_llm(input_data, model_name: str | None = None):
             temperature=0.1
         )
 
-        content_text = response.choices[0].message.content
+        content_text = response.choices[0].message.content or ""
         usage = response.usage
 
         logger.debug(f"API response: prompt_tokens={usage.prompt_tokens}, completion_tokens={usage.completion_tokens}")
 
         # 记录 token 使用
         global token_counter
-        if token_counter is not None:
+        if token_counter is not None and usage:
             token_counter.add(usage)
 
         # 移除 <think> 标签
-        content_text = re.sub(r'<think>.*?</think>', '', content_text, flags=re.DOTALL)
-        content_text = re.sub(r'<think>.*?</think>', '', content_text, flags=re.DOTALL)
-        if content_text.strip().startswith('<think>') or content_text.strip().startswith(''):
-            content_text = re.sub(r'^.*?{', '{', content_text, flags=re.DOTALL)
+        if content_text:
+            content_text = re.sub(r'<think>.*?</think>', '', content_text, flags=re.DOTALL)
+            content_text = re.sub(r'<think>.*?</think>', '', content_text, flags=re.DOTALL)
+            if content_text.strip().startswith('<think>') or content_text.strip().startswith(''):
+                content_text = re.sub(r'^.*?{', '{', content_text, flags=re.DOTALL)
+        else:
+            logger.warning("LLM 返回内容为空")
+            return None, usage
 
         # 提取 JSON
         start_idx = content_text.find('{')
@@ -354,12 +363,20 @@ def _dedupe_structured_results(results: list) -> tuple[list, int]:
     return out, dropped
 
 
+def _is_failed_record(item: dict) -> bool:
+    """判断一条记录是否为抽取失败的记录（只有基本信息，没有 LLM 产出）。"""
+    # 如果没有 llm_model 字段，或者关键字段 buyer_name_std 为空，则视为失败
+    return not item.get("llm_model") or not item.get("buyer_name_std")
+
+
 def extract_batch(
     limit=50,
     use_llm=True,
     model_name: str | None = None,
     output_suffix=None,
     input_json_path: str | None = None,
+    max_workers=8,
+    retry=False,
 ):
     """批量抽取结构化字段，每抽取一条立即保存，已存在的数据跳过
 
@@ -369,6 +386,8 @@ def extract_batch(
         model_name: 模型 id；None 时使用抽取提供商的 model（默认 DeepSeek deepseek-chat）
         output_suffix: 输出文件后缀，用于区分不同模型的测试结果
         input_json_path: 详情 JSON（如 tenders_detail.json）路径
+        max_workers: 并行工作线程数
+        retry: 是否重新抽取之前失败的记录
     """
     global token_counter
     effective_model = _effective_llm_model(model_name)
@@ -383,7 +402,7 @@ def extract_batch(
     logger.info(
         f"开始抽取任务：limit={limit}, use_llm={use_llm}, "
         f"provider={prov}, model={effective_model}, "
-        f"input_json={input_json_path}"
+        f"input_json={input_json_path}, workers={max_workers}"
     )
 
     if not input_json_path:
@@ -399,58 +418,84 @@ def extract_batch(
         json_path = os.path.join(OUTPUT_DIR, f"tenders_structured_{suffix}.json")
     else:
         json_path = os.path.join(OUTPUT_DIR, "tenders_structured.json")
+    
+    # 增量保存的临时文件 (JSONL 格式)
+    jsonl_path = json_path + "l"
 
     # 如果文件已存在，先读取已有数据（空文件或损坏 JSON 时从头开始）
+    results = []
+    existing_ids = set()
+
+    # 1. 加载已完成的 JSON 文件
     if os.path.exists(json_path):
         try:
             with open(json_path, "r", encoding="utf-8") as f:
                 raw = f.read().strip()
-            if not raw:
-                results = []
-                logger.warning(f"已有输出文件为空，将覆盖写入：{json_path}")
-            else:
+            if raw:
                 results = json.loads(raw)
                 if not isinstance(results, list):
-                    raise ValueError(
-                        f"期望 JSON 数组，得到 {type(results).__name__}"
-                    )
-        except (json.JSONDecodeError, ValueError, OSError) as e:
-            logger.warning(f"读取已有输出失败（{e}），将从头写入：{json_path}")
+                    raise ValueError(f"期望 JSON 数组，得到 {type(results).__name__}")
+                results, merge_dropped = _dedupe_structured_results(results)
+                if merge_dropped:
+                    logger.warning(f"已有数据中存在 {merge_dropped} 条重复，已合并")
+        except Exception as e:
+            logger.warning(f"读取已有 JSON 失败（{e}）")
             results = []
-        results, merge_dropped = _dedupe_structured_results(results)
-        if merge_dropped:
-            logger.warning(
-                f"已有 tenders_structured 中存在 {merge_dropped} 条重复键，已合并为保留首条"
-            )
-            try:
-                with open(json_path, "w", encoding="utf-8") as f:
-                    json.dump(results, f, indent=2, ensure_ascii=False)
-                logger.info(f"已写回去重后的已有数据：{json_path}")
-            except OSError as e:
-                logger.warning(f"写回去重结果失败：{e}")
-        existing_ids = {_result_record_key(item) for item in results if _result_record_key(item)}
-        logger.info(f"加载已有数据，共 {len(results)} 条（去重后）")
-    else:
-        results = []
-        existing_ids = set()
-        logger.info("未找到已有数据文件，从头开始")
+
+    # 2. 加载可能存在的临时 JSONL 文件 (断点续传)
+    if os.path.exists(jsonl_path):
+        try:
+            with open(jsonl_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.strip():
+                        item = json.loads(line)
+                        results.append(item)
+            results, _ = _dedupe_structured_results(results)
+            logger.info(f"从临时文件加载了记录，当前共 {len(results)} 条")
+        except Exception as e:
+            logger.warning(f"读取临时 JSONL 失败（{e}）")
+
+    if retry:
+        original_count = len(results)
+        results = [item for item in results if not _is_failed_record(item)]
+        retry_count = original_count - len(results)
+        if retry_count > 0:
+            logger.info(f"检测到 {retry_count} 条失败记录，将重新抽取")
+
+    existing_ids = {_result_record_key(item) for item in results if _result_record_key(item)}
+    logger.info(f"加载已有数据完成，共 {len(results)} 条")
+
+    # 过滤掉已存在的记录
+    pending_rows = []
+    skipped = 0
+    for row in rows:
+        rec_key = _result_record_key({"source_url": row["source_url"]})
+        if rec_key in existing_ids:
+            skipped += 1
+        else:
+            pending_rows.append(row)
+    
+    if skipped:
+        logger.info(f"跳过已存在记录：{skipped} 条")
 
     success = 0
     llm_success = 0
-    skipped = 0
+    
+    # 线程安全锁
+    results_lock = threading.Lock()
+    stats_lock = threading.Lock()
 
     progress = tqdm(
-        rows,
-        total=len(rows),
+        total=len(pending_rows),
         desc="抽取进度",
         unit="条",
         dynamic_ncols=True,
         leave=True,
     )
 
-    for idx, row in enumerate(progress, 1):
-        rec_key = _result_record_key({"source_url": row["source_url"]})
-        project_name = (row.get("project_name") or "")[:40]
+    def process_row(row):
+        nonlocal success, llm_success
+        
         data = {
             "source_url": row["source_url"],
             "project_name": row.get("project_name") or "",
@@ -462,15 +507,6 @@ def extract_batch(
             "attachment_urls": row.get("attachment_urls") or "[]",
         }
 
-        if rec_key in existing_ids:
-            skipped += 1
-            logger.debug(f"跳过已存在记录：{rec_key}")
-            progress.set_postfix_str(
-                f"跳过={skipped} 成功={success} LLM={llm_success} Token={token_counter.total_tokens}",
-                refresh=True
-            )
-            continue
-
         if use_llm:
             llm_result, token_usage = call_llm(
                 input_data, model_name=effective_model
@@ -478,18 +514,15 @@ def extract_batch(
             if llm_result:
                 data.update(llm_result)
                 data["llm_model"] = effective_model
-                llm_success += 1
-                success += 1
+                with stats_lock:
+                    llm_success += 1
+                    success += 1
+                
                 if token_usage:
                     if not token_counter.estimate_cost:
-                        logger.info(
+                        logger.debug(
                             f"LLM 抽取成功：input={token_usage.prompt_tokens}, "
                             f"output={token_usage.completion_tokens}"
-                        )
-                        print(
-                            f"  [TOKEN] input={token_usage.prompt_tokens} "
-                            f"output={token_usage.completion_tokens} "
-                            f"total={token_usage.total_tokens}"
                         )
                     else:
                         price_hit = token_counter.pricing.get('input_cache_hit', 0)
@@ -515,32 +548,55 @@ def extract_batch(
                             cost_avg = (cost_min + cost_max) / 2
                             cost_str = f"{round(cost_avg, 4)} 元 ({round(cost_min, 4)}-{round(cost_max, 4)})"
 
-                        logger.info(
+                        logger.debug(
                             f"LLM 抽取成功：input={token_usage.prompt_tokens}, "
                             f"output={token_usage.completion_tokens}, cost≈{cost_str}"
                         )
-                        print(
-                            f"  [TOKEN] input={token_usage.prompt_tokens} "
-                            f"output={token_usage.completion_tokens} "
-                            f"total={token_usage.total_tokens} cost={cost_str}"
-                        )
             else:
                 logger.warning(f"LLM 抽取失败：{row.get('source_url', '')}")
-                print(f"  [TOKEN] call failed")
         else:
-            success += 1
+            with stats_lock:
+                success += 1
 
-        results.append(data)
-        existing_ids.add(rec_key)
+        with results_lock:
+            results.append(data)
+            # 增量保存到临时 JSONL 文件
+            try:
+                with open(jsonl_path, 'a', encoding='utf-8') as f:
+                    f.write(json.dumps(data, ensure_ascii=False) + "\n")
+            except Exception as e:
+                logger.error(f"增量保存 JSONL 失败: {e}")
 
-        # 立即保存到 JSON 文件
-        with open(json_path, 'w', encoding='utf-8') as f:
-            json.dump(results, f, indent=2, ensure_ascii=False)
+        with stats_lock:
+            progress.update(1)
+            progress.set_postfix_str(
+                f"跳过={skipped} 成功={success} LLM={llm_success} Token={token_counter.total_tokens}",
+                refresh=True
+            )
 
-        progress.set_postfix_str(
-            f"跳过={skipped} 成功={success} LLM={llm_success} Token={token_counter.total_tokens}",
-            refresh=True
-        )
+    # 使用线程池并行处理
+    if pending_rows:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            executor.map(process_row, pending_rows)
+
+    progress.close()
+
+    # 任务完成后，将临时 JSONL 合并到正式 JSON 文件中
+    if success > 0 or skipped > 0:
+        with results_lock:
+            try:
+                # 再次去重，确保最终文件干净
+                final_results, _ = _dedupe_structured_results(results)
+                with open(json_path, 'w', encoding='utf-8') as f:
+                    json.dump(final_results, f, indent=2, ensure_ascii=False)
+                logger.info(f"最终结果已合并保存至：{json_path}")
+                
+                # 合并成功后删除临时文件
+                if os.path.exists(jsonl_path):
+                    os.remove(jsonl_path)
+                    logger.info("已清理临时文件")
+            except Exception as e:
+                logger.error(f"合并最终 JSON 失败: {e}")
 
     logger.info(f"抽取完成：success={success}, skipped={skipped}, llm_success={llm_success}")
 
@@ -594,6 +650,8 @@ def main():
         help='抽取用 LLM 提供商键：deepseek、local（默认 deepseek；也可用环境变量 EXTRACT_LLM_PROVIDER）',
     )
     parser.add_argument('--output-suffix', type=str, default=None, help='输出文件后缀')
+    parser.add_argument('--workers', type=int, default=48, help='并行工作线程数')
+    parser.add_argument('--retry', action='store_true', help='重新抽取之前失败的记录')
     parser.add_argument(
         '--from-json',
         nargs='?',
@@ -630,6 +688,8 @@ def main():
         model_name=args.model,
         output_suffix=args.output_suffix,
         input_json_path=input_json_path,
+        max_workers=args.workers,
+        retry=args.retry,
     )
 
 

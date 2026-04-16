@@ -43,11 +43,14 @@ class IndexBuilder:
         
         for item in data_list:
             emb = item.get('embedding')
-            if emb and len(emb) == self.dimension:
+            # 优先使用 uuid，其次是 id
+            item_id = item.get('uuid') or item.get('id')
+            
+            if emb and len(emb) == self.dimension and item_id:
                 embeddings.append(emb)
-                valid_ids.append(item.get('id', 'unknown'))
+                valid_ids.append(str(item_id))
             else:
-                # 如果没有向量，记录一下（可能是之前向量化失败的）
+                # 如果没有向量或ID，记录一下
                 continue
 
         if not embeddings:

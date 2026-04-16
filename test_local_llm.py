@@ -10,9 +10,9 @@ from openai import OpenAI
 
 # ==================== 配置区域 ====================
 # 修改为你的本地模型配置
-BASE_URL = "http://10.210.10.51:11437/v1"  # 本地推理服务端点 (vLLM / Ollama / LM Studio 等)
+BASE_URL = "http://10.210.10.51:8001/v1"  # 本地推理服务端点 (vLLM / Ollama / LM Studio 等)
 API_KEY = "sk-local"                   # 本地服务通常不需要真实 key
-MODEL = "/models/Qwen3-32B"                   # 你的本地模型名称
+MODEL = "/models/Qwen3.5-27B"                   # 你的本地模型名称
 # ==================== 配置区域 ====================
 
 

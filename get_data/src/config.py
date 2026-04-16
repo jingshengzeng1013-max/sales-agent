@@ -60,9 +60,9 @@ DOUBAO_CONFIG = {
 LOCAL_LLM_CONFIG = {
     "api_key": os.environ.get("LOCAL_LLM_API_KEY", "local-api-key"),
     "base_url": os.environ.get(
-        "LOCAL_LLM_BASE_URL", "http://10.210.10.51:11437/v1"
+        "LOCAL_LLM_BASE_URL", "http://10.210.10.51:8001/v1"
     ).rstrip("/"),
-    "model": os.environ.get("LOCAL_LLM_MODEL", "/models/Qwen3-32B"),
+    "model": os.environ.get("LOCAL_LLM_MODEL", "/models/Qwen3.5-27B"),
     "timeout": int(os.environ.get("LOCAL_LLM_TIMEOUT", "600")),
 }
 
@@ -116,7 +116,7 @@ def get_llm_config(provider=None):
 # 爬虫配置
 CRAWLER_CONFIG = {
     "base_url": "https://search.ccgp.gov.cn/bxsearch",
-    "keyword": "通信终端",
+    "keyword": "车载",
     "delay_min": 2,
     "delay_max": 5,
     "page_index": 1,
@@ -136,7 +136,7 @@ CRAWLER_CONFIG = {
     "agentName": "",
     # 时间配置
     # timeType: "0":今日 "1":近三日 "2":近一周 "3":近一月 "4":近三月 "5":近半年 "6":指定时间
-    "timeType": "5",
+    "timeType": "4",
     # 近半年示例：与网页手工搜索范围对齐（YYYY:MM:DD）
     "start_time": "2025:10:14",
     "end_time": None,  # None 表示结束日为当天
