@@ -1,132 +1,131 @@
-#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-get_data Web UI：FastAPI 托管静态页。
-重构后的入口文件，具体逻辑已迁移至 webapp/router/ 目录下。
+API 服务端：提供产品、标讯检索接口
 """
-from __future__ import annotations
 
-import asyncio
-import logging
 import os
 import sys
-import time
+import numpy as np
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 from pathlib import Path
 
-import contextlib
-from fastapi import FastAPI, HTTPException
-from starlette.requests import Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
+# 将项目根目录添加到 sys.path
+BASE_DIR = Path(__file__).resolve().parent.parent
+sys.path.append(str(BASE_DIR))
 
-# 确保项目根目录在 sys.path 中
-ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+from src.retrieval.retriever import DualRetriever
 
-from src.config import LOGS_WEBAPP_DIR
-from webapp.router import system, retrieval, intel, db, crawl, extract, output
+app = Flask(__name__)
+CORS(app) # 允许跨域，方便 demo.html 调用
 
-# 配置日志
-logger = logging.getLogger("get_data.webapp")
+# 初始化检索器
+print("[INFO] 正在初始化双路检索器...")
+product_retriever = DualRetriever(data_type="product")
+tender_retriever = DualRetriever(data_type="tender")
 
-def _configure_logging() -> None:
-    level_name = os.environ.get("GET_DATA_WEB_LOG_LEVEL", "INFO").upper()
-    level = getattr(logging, level_name, logging.INFO)
-        logging.basicConfig(
-            level=level,
-            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    LOGS_WEBAPP_DIR.mkdir(parents=True, exist_ok=True)
-        fh = logging.FileHandler(LOGS_WEBAPP_DIR / "webapp.log", encoding="utf-8")
-    fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
-        logger.addHandler(fh)
+@app.route('/api/products', methods=['GET'])
+def get_products():
+    """获取所有产品列表"""
+    return jsonify(product_retriever.raw_data)
 
-_configure_logging()
-
-def _warmup():
-    """启动时预热检索索引"""
-        from tools.match_product.executor import get_hybrid_searcher
-    from src.retrieval.tender_index_search import get_tender_index_searcher
-
-    try:
-        get_hybrid_searcher()
-        get_tender_index_searcher()
-    except Exception as e:
-        logger.error(f"预热失败: {e}")
-
-@contextlib.asynccontextmanager
-async def _app_lifespan(app: FastAPI):
-    if not os.environ.get("GET_DATA_WEB_SKIP_WARMUP"):
-        asyncio.create_task(asyncio.to_thread(_warmup))
-    yield
-
-app = FastAPI(
-    title="get_data Web UI",
-    version="1.1.0",
-    lifespan=_app_lifespan,
-)
-
-# 中间件
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-@app.middleware("http")
-async def _log_requests(request: Request, call_next):
-    t0 = time.perf_counter()
-        response = await call_next(request)
-    ms = (time.perf_counter() - t0) * 1000
-    logger.info(f"{request.method} {request.url.path} {response.status_code} {ms:.1f}ms")
-    return response
-
-# 挂载路由
-app.include_router(system.router)
-app.include_router(retrieval.router)
-app.include_router(intel.router)
-app.include_router(db.router)
-app.include_router(crawl.router)
-app.include_router(extract.router)
-app.include_router(output.router)
-
-# 静态文件
-STATIC_DIR = Path(__file__).resolve().parent / "static"
-if STATIC_DIR.is_dir():
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-
-# 文档目录（用于 demo 页面加载 MD 说明）
-DOCS_DIR = Path(__file__).resolve().parent.parent / "docs"
-if DOCS_DIR.is_dir():
-    app.mount("/docs", StaticFiles(directory=str(DOCS_DIR)), name="docs")
-
-@app.get("/")
-def index() -> FileResponse:
-    index_file = STATIC_DIR / "index.html"
-    if not index_file.is_file():
-        raise HTTPException(status_code=500, detail="static/index.html 缺失")
-    return FileResponse(index_file)
-
-if __name__ == "__main__":
-    import uvicorn
-    from webapp.utils import terminate_listeners_on_port, guess_lan_ipv4s
+@app.route('/api/search/tenders', methods=['POST'])
+def search_tenders():
+    """
+    根据产品信息或关键词检索标讯
+    """
+    data = request.json
+    query = data.get('query', '')
+    top_k = data.get('top_k', 10)
     
-    host = os.environ.get("GET_DATA_WEB_HOST", "0.0.0.0")
-    port = int(os.environ.get("GET_DATA_WEB_PORT", "8103"))
+    if not query:
+        return jsonify({"error": "Query is empty"}), 400
+        
+    print(f"[API] 收到标讯检索请求: {query}")
+    results = tender_retriever.hybrid_search(query, top_k=top_k)
     
-    # 启动前先清理占用该端口的进程
-    terminate_listeners_on_port(port)
+    # 格式化输出
+    formatted_results = []
+    for res in results:
+        item = res['data']
+        formatted_results.append({
+            "id": res['id'],
+            "score": res['combined_score'],
+            "project_name": item.get('project_name', '未知项目'),
+            "buyer": item.get('buyer_name_std', '未知单位'),
+            "budget": item.get('budget', '未公开'),
+            "publish_date": item.get('publish_date', ''),
+            "location": item.get('location', '全国'),
+            "keywords": item.get('product_keywords', []),
+            "scenario": item.get('application_scenario', ''),
+            "tech_summary": item.get('technical_requirements_summary', '')
+        })
+        
+    return jsonify(formatted_results)
+
+@app.route('/api/match', methods=['POST'])
+def match_product_tenders():
+    """
+    针对特定产品匹配标讯
+    """
+    data = request.json
+    product_id = data.get('product_id')
+    top_k = data.get('top_k', 10)
     
-    print("=" * 50)
-    print("get_data Web UI 启动准备中...")
-    print(f"本地访问链接: http://127.0.0.1:{port}")
-    for ip in guess_lan_ipv4s():
-        print(f"局域网访问链接: http://{ip}:{port}")
-    print("=" * 50)
+    # 找到产品
+    product = product_retriever.data_dict.get(str(product_id))
+    if not product:
+        return jsonify({"error": "Product not found"}), 404
+        
+    # 1. 获取产品的原始向量 (直接从向量库/数据中取)
+    query_vector = product.get('embedding')
+    if query_vector:
+        query_vector = np.array([query_vector]).astype('float32')
+        
+    # 2. 获取用于关键词检索的文本
+    query_text = product.get('embedded_content')
+    if not query_text:
+        name = product.get('name', '')
+        desc = product.get('description', '')
+        features = " ".join(product.get('features', []))
+        query_text = f"产品: {name} | 功能: {desc} | 特性: {features}"
+        
+    print(f"[API] 正在为产品 [{product.get('name')}] 匹配标讯 (向量库间直接计算)...")
+    # 传入预存向量，避免重新调用 Embedding 接口
+    results = tender_retriever.hybrid_search(query_text, top_k=top_k, query_vector=query_vector)
     
-    uvicorn.run(app, host=host, port=port)
+    # 格式化输出
+    formatted_results = []
+    for res in results:
+        item = res['data']
+        formatted_results.append({
+            "id": res['id'],
+            "score": res['combined_score'],
+            "project_name": item.get('project_name', '未知项目'),
+            "buyer": item.get('buyer_name_std', '未知单位'),
+            "budget": item.get('budget', '未公开'),
+            "publish_date": item.get('publish_date', ''),
+            "location": item.get('location', '全国'),
+            "keywords": item.get('product_keywords', []),
+            "scenario": item.get('application_scenario', ''),
+            "tech_summary": item.get('technical_requirements_summary', '')
+        })
+        
+    return jsonify({
+        "product": {
+            "id": product_id,
+            "name": product.get('name')
+        },
+        "matches": formatted_results
+    })
+
+if __name__ == '__main__':
+    # 打印 Web 页面地址，方便用户直接点击
+    print("\n" + "="*50)
+    print("AI 销售助手服务已启动！")
+    print(f"API 接口地址: http://127.0.0.1:5000/api")
+    print(f"Demo 演示页面: file:///{str(BASE_DIR / 'webapp' / 'demo.html').replace('\\', '/')}")
+    print("="*50 + "\n")
+    
+    # 启动 Flask 服务，监听 5000 端口
+    app.run(host='0.0.0.0', port=5000, debug=False)

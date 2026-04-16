@@ -716,6 +716,22 @@
         </div>
 
         <div class="field">
+          <label for="retrieval-tenders-province-select">地区筛选</label>
+          <div class="field-hint">按省份过滤结果</div>
+          <select id="retrieval-tenders-province-select" aria-label="地区筛选">
+            <option value="">— 全部地区 —</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="retrieval-tenders-type-select">公告类型</label>
+          <div class="field-hint">按公告关键词过滤</div>
+          <select id="retrieval-tenders-type-select" aria-label="公告类型">
+            <option value="">— 全部类型 —</option>
+          </select>
+        </div>
+
+        <div class="field">
           <label for="retrieval-tenders-top-k">返回条数 top_k</label>
           <div class="field-hint">1-2000</div>
           <input id="retrieval-tenders-top-k" type="number" min="1" max="2000" value="20" />
@@ -742,11 +758,21 @@
         </div>
 
         <div class="field">
-          <span class="field-name">检索分支</span>
+          <span class="field-name">检索分支 & 过滤</span>
           <div class="checks">
             <label><input type="checkbox" id="retrieval-tenders-use-vector" checked /> FAISS 向量</label>
             <label><input type="checkbox" id="retrieval-tenders-use-bm25" checked /> BM25</label>
+            <label style="color: #f5222d; font-weight: 600;"><input type="checkbox" id="retrieval-tenders-exclude-won" /> 隐藏已中标</label>
           </div>
+        </div>
+
+        <div class="field">
+          <label for="retrieval-tenders-sort-by">排序方式</label>
+          <div class="field-hint">结果排列顺序</div>
+          <select id="retrieval-tenders-sort-by">
+            <option value="score">按匹配分值 (默认)</option>
+            <option value="date">按发布时间 (从近到远)</option>
+          </select>
         </div>
 
         <div class="actions">
@@ -759,7 +785,18 @@
     </section>
 
     <section class="card" id="results-card">
-      <h3>检索结果</h3>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h3 style="margin: 0;">检索结果</h3>
+        <div style="display: flex; gap: 16px; align-items: center;">
+          <label style="font-size: 14px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; cursor: pointer;">
+            <input type="checkbox" id="results-exclude-won-toggle" onchange="syncAndSearch('exclude_won')" /> 隐藏已中标
+          </label>
+          <select id="results-sort-by-toggle" style="width: auto; padding: 4px 12px; font-size: 14px;" onchange="syncAndSearch('sort_by')">
+            <option value="score">按匹配分值排序</option>
+            <option value="date">按发布时间倒序</option>
+          </select>
+        </div>
+      </div>
       <div id="retrieval-tenders-results" class="empty">尚未执行检索。</div>
     </section>
 
@@ -868,16 +905,92 @@
 
     function buildProductInfoHtml(productInfo) {
       if (!productInfo) return "";
-      const name = productInfo.name || productInfo.product_id || "未知产品";
-      const desc = productInfo.description || "";
+      const name = productInfo.name || productInfo.id || "未知产品";
+      const category = productInfo.category || "—";
+      const subCategory = productInfo.sub_category || "—";
+      const desc = productInfo.description || "—";
       const queryPreview = productInfo.query_preview || "";
-      let html = '<div class="product-info">';
-      html += "<div><strong>检索产品：</strong>" + escapeHtml(name);
-      if (productInfo.product_id) html += " <span class=\"muted\">(" + escapeHtml(productInfo.product_id) + ")</span>";
-      html += "</div>";
-      if (desc) html += '<div class="muted" style="margin-top:8px;">产品描述：' + escapeHtml(desc) + "</div>";
-      if (queryPreview) html += '<div class="muted" style="margin-top:8px;">检索查询：' + escapeHtml(queryPreview) + "</div>";
-      html += "</div>";
+      
+      // 格式化技术规格
+      let specsHtml = "—";
+      if (productInfo.technical_specs) {
+          const specLabels = {
+              "architecture": "架构",
+              "integrated_cores": "集成内核",
+              "supported_networks": "支持网络",
+              "process_technology": "工艺",
+              "standard": "标准",
+              "modulation": "调制方式",
+              "security": "安全",
+              "instruction_set": "指令集",
+              "pipeline": "流水线",
+              "parallelism": "并行度",
+              "frequency_band": "频段",
+              "package": "封装",
+              "interfaces": "接口",
+              "dimensions": "尺寸",
+              "frequency": "频率",
+              "latency": "时延",
+              "interface": "接口"
+          };
+          
+          specsHtml = Object.entries(productInfo.technical_specs)
+              .map(([k, v]) => {
+                  const label = specLabels[k] || k;
+                  const value = Array.isArray(v) ? v.join(', ') : v;
+                  return `<div style="margin-bottom:4px;"><strong>${escapeHtml(label)}:</strong> ${escapeHtml(String(value))}</div>`;
+              })
+              .join('');
+      }
+
+      // 格式化特性
+      let featuresHtml = "";
+      if (productInfo.features && Array.isArray(productInfo.features)) {
+          featuresHtml = productInfo.features.map(f => 
+              `<span style="display:inline-block;padding:2px 8px;background:#f6ffed;color:#52c41a;font-size:12px;border-radius:10px;margin-right:4px;border:1px solid #b7eb8f;">${escapeHtml(f)}</span>`
+          ).join('');
+      }
+
+      let html = '<div class="product-info-structured" style="background:#f0f5ff; border:1px solid #adc6ff; border-radius:12px; padding:20px; margin-bottom:24px; box-shadow:0 4px 12px rgba(29, 57, 196, 0.05);">';
+      
+      // 标题栏
+      html += `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; border-bottom:2px solid #adc6ff; padding-bottom:12px;">
+                <h3 style="margin:0; color:#1d39c4; font-size:20px;">📦 检索产品：${escapeHtml(name)}</h3>
+                <div style="display:flex; gap:8px;">
+                    <span style="font-size:12px; color:#1d39c4; background:#e6f7ff; padding:4px 12px; border-radius:6px; border:1px solid #91d5ff; font-weight:600;">${escapeHtml(category)} / ${escapeHtml(subCategory)}</span>
+                    <span style="font-size:12px; color:#597ef7; background:#fff; padding:4px 12px; border-radius:6px; border:1px solid #adc6ff; font-weight:600;">ID: ${escapeHtml(productInfo.id || '—')}</span>
+                </div>
+               </div>`;
+      
+      // 结构化表格
+      html += '<table style="width:100%; border-collapse:collapse; font-size:14px; background:#fff; border-radius:8px; overflow:hidden; border:1px solid #e6f7ff;">';
+      html += `
+        <tr style="border-bottom:1px solid #e6f7ff;">
+            <td style="padding:12px 15px; background:#fafafa; color:#595959; width:100px; font-weight:600;">产品描述</td>
+            <td style="padding:12px 15px; color:#262626; line-height:1.6;">${escapeHtml(desc)}</td>
+        </tr>
+        <tr style="border-bottom:1px solid #e6f7ff;">
+            <td style="padding:12px 15px; background:#fafafa; color:#595959; font-weight:600;">技术规格</td>
+            <td style="padding:12px 15px; color:#262626; line-height:1.6;">${specsHtml}</td>
+        </tr>
+        <tr style="border-bottom:1px solid #e6f7ff;">
+            <td style="padding:12px 15px; background:#fafafa; color:#595959; font-weight:600;">核心特性</td>
+            <td style="padding:12px 15px;">${featuresHtml || '—'}</td>
+        </tr>
+        <tr style="border-bottom:1px solid #e6f7ff;">
+            <td style="padding:12px 15px; background:#fafafa; color:#595959; font-weight:600;">应用场景</td>
+            <td style="padding:12px 15px; color:#262626;">${productInfo.use_cases ? (Array.isArray(productInfo.use_cases) ? productInfo.use_cases.join('、') : productInfo.use_cases) : '—'}</td>
+        </tr>
+      `;
+      
+      if (queryPreview) {
+          html += `<tr>
+            <td style="padding:12px 15px; background:#fafafa; color:#595959; font-weight:600;">检索向量</td>
+            <td style="padding:12px 15px; color:#8c8c8c; font-size:12px; font-family:monospace; word-break:break-all;">${escapeHtml(queryPreview)}</td>
+          </tr>`;
+      }
+      
+      html += '</table></div>';
       return html;
     }
 
@@ -899,29 +1012,179 @@
       items.forEach((it, index) => {
         const d = it.data || {};
         const tenderId = it.tender_id != null ? String(it.tender_id) : "—";
-        const buyer = d.buyer_name_std ? String(d.buyer_name_std) : "";
-        const title = buyer ? buyer + " · #" + tenderId : "招标 #" + tenderId;
-        const preview = buildPreviewHtml(d.document_preview || "");
-        const score = typeof it.score === "number" ? it.score.toFixed(4) : String(it.score ?? "—");
-        const vec = it.vector_score != null ? Number(it.vector_score).toFixed(4) : "";
-        const bm25 = it.bm25_score != null ? Number(it.bm25_score).toFixed(4) : "";
-        const raw = it.rrf_raw_score != null ? Number(it.rrf_raw_score).toFixed(6) : "";
+        const buyer = d.buyer_name_std ? String(d.buyer_name_std) : "未知单位";
+        const projectName = d.project_name ? String(d.project_name) : ("招标 #" + tenderId);
+        
+        const score = typeof it.score === "number" ? it.score.toFixed(1) : String(it.score ?? "—");
+        const vec = it.vector_score != null ? Number(it.vector_score).toFixed(4) : "0.0000";
+        const bm25 = it.bm25_score != null ? Number(it.bm25_score).toFixed(1) : "0.0";
+        const bm25_norm = it.bm25_norm_score != null ? Number(it.bm25_norm_score).toFixed(4) : "0.0000";
+        const raw = it.rrf_raw_score != null ? Number(it.rrf_raw_score).toFixed(6) : "0.000000";
 
-        html += '<article class="result-card">';
-        html += '<div class="result-head">';
-        html += '<div>';
-        html += "<h4>" + (index + 1) + ". " + escapeHtml(title) + "</h4>";
-        if (d.detail_url) {
-          html += '<div style="margin-top:6px;"><a class="detail-link" href="' + escapeHtml(d.detail_url) + '" target="_blank" rel="noopener noreferrer">查看原网页</a></div>';
+        // 格式化关键词
+        let keywordsHtml = '';
+        if (d.product_keywords) {
+            let kws = [];
+            try {
+                kws = typeof d.product_keywords === 'string' ? JSON.parse(d.product_keywords) : d.product_keywords;
+            } catch(e) { kws = []; }
+            if (Array.isArray(kws)) {
+                keywordsHtml = kws.slice(0, 5).map(k => 
+                    `<span style="display:inline-block;padding:2px 8px;background:#e6f7ff;color:#1890ff;font-size:12px;border-radius:10px;margin-right:4px;margin-bottom:4px;border:1px solid #91d5ff;">${escapeHtml(k)}</span>`
+                ).join('');
+            }
         }
+
+        // 状态标签
+        let statusHtml = '';
+        if (it.is_aggregated) {
+            const status = d.status || '进行中';
+            const statusColor = status === '已中标' ? '#52c41a' : '#1677ff';
+            const statusBg = status === '已中标' ? '#f6ffed' : '#e6f4ff';
+            const statusBorder = status === '已中标' ? '#b7eb8f' : '#91d5ff';
+            statusHtml = `<span style="display:inline-block;padding:2px 10px;background:${statusBg};color:${statusColor};font-size:13px;border-radius:4px;margin-right:10px;border:1px solid ${statusBorder};font-weight:600;">${escapeHtml(status)}</span>`;
+        }
+
+        // 处理详情链接
+        let finalUrl = '#';
+        if (it.is_aggregated) {
+            if (d.events && d.events.length > 0 && d.events[0].url) {
+                finalUrl = d.events[0].url;
+            }
+        } else {
+            finalUrl = d.detail_url || '#';
+        }
+
+        html += '<article class="result-card" style="margin-bottom:24px;padding:28px;border:1px solid #e8e8e8;border-radius:12px;background:#fff;box-shadow:0 4px 12px rgba(0,0,0,0.05);transition:all 0.3s ease;">';
+        
+        // 1. 头部：项目名称与总分
+        html += '<div class="result-head" style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;gap:20px;">';
+        html += '<div style="flex:1;">';
+        html += "<h4 style='margin:0;font-size:22px;font-weight:600;color:#1f1f1f;line-height:1.4;'>" + (index + 1) + ". " + escapeHtml(projectName) + "</h4>";
+        const publishDate = (d.publish_date && typeof d.publish_date === 'string') ? d.publish_date.split('T')[0] : '未知时间';
+        
+        html += "<div style='font-size:14px;color:#8c8c8c;margin-top:10px;display:flex;gap:16px;align-items:center;flex-wrap:wrap;'>";
+        html += "<span>🏢 " + escapeHtml(buyer) + "</span>";
+        html += "<span>📅 " + escapeHtml(publishDate) + "</span>";
+        if (d.province) html += "<span>📍 " + escapeHtml(d.province) + (d.city ? ' · ' + escapeHtml(d.city) : '') + "</span>";
+        html += "<span>🆔 " + (it.is_aggregated ? 'Project' : escapeHtml(tenderId).slice(0,8) + "...") + "</span>";
         html += "</div>";
-        html += '<div class="result-meta">';
-        html += '<span class="pill primary">score ' + escapeHtml(score) + "</span>";
-        if (raw) html += '<span class="pill">rrf_raw ' + escapeHtml(raw) + "</span>";
-        if (vec) html += '<span class="pill">vec ' + escapeHtml(vec) + "</span>";
-        if (bm25) html += '<span class="pill">bm25 ' + escapeHtml(bm25) + "</span>";
+        html += "</div>";
+        html += '<div class="result-score" style="text-align:right;background:#f0f5ff;padding:10px 20px;border-radius:8px;border:1px solid #adc6ff;min-width:120px;">';
+        html += '<div style="font-size:32px;font-weight:800;color:#2f54eb;line-height:1;">' + escapeHtml(score) + "</div>";
+        html += '<div style="font-size:11px;color:#597ef7;margin-top:6px;text-transform:uppercase;letter-spacing:1px;font-weight:600;">' + (it.is_aggregated ? 'AVG RRF' : 'RRF Score') + '</div>';
         html += "</div></div>";
-        if (preview) html += '<div class="preview">' + preview + "</div>";
+
+        // 2. 分数细节面板
+        html += '<div class="score-details" style="display:flex;justify-content:space-between;gap:12px;margin-bottom:24px;padding:16px;background:#fafafa;border-radius:8px;border:1px solid #f0f0f0;">';
+        const scoreItem = (val, label, color) => `
+            <div style="flex:1;text-align:center;">
+                <div style="font-size:16px;font-weight:700;color:${color};">${val}</div>
+                <div style="font-size:11px;color:#8c8c8c;margin-top:4px;">${label}</div>
+            </div>
+        `;
+        html += scoreItem(vec, it.is_aggregated ? 'Avg Vector' : 'Vector Sim', '#722ed1');
+        html += '<div style="width:1px;background:#e8e8e8;"></div>';
+        html += scoreItem(bm25, it.is_aggregated ? 'Avg BM25' : 'BM25 Score', '#52c41a');
+        html += '<div style="width:1px;background:#e8e8e8;"></div>';
+        html += scoreItem(bm25_norm, it.is_aggregated ? 'Avg Norm' : 'BM25 Norm', '#faad14');
+        html += '<div style="width:1px;background:#e8e8e8;"></div>';
+        html += scoreItem(raw, 'RRF Raw', '#bfbfbf');
+        html += '</div>';
+
+        // 3. 核心指标行 (预算 & 机会)
+        html += '<div style="display:flex; gap:40px; margin-bottom:16px; font-size:15px;">';
+        if (d.budget_amount) {
+            const budget = (d.budget_amount / 10000).toFixed(2);
+            html += `<div><span style="color:#faad14;">💰</span> <strong>预算金额:</strong> <span style="color:#f5222d;font-weight:600;">${budget} 万元</span></div>`;
+        }
+        if (d.opportunity_score) {
+            html += `<div><span style="color:#faad14;">⭐</span> <strong>机会评分:</strong> <span style="color:#fa8c16;font-weight:600;">${d.opportunity_score} / 100</span></div>`;
+        }
+        html += '</div>';
+
+        // 4. 辅助信息行 (场景 & 理由 & 联系人)
+        html += '<div style="display:grid; grid-template-columns: 1.5fr 1.5fr 1fr; gap:20px; margin-bottom:24px; font-size:14px; color:#595959; line-height:1.6;">';
+        html += `<div><span style="color:#f5222d;">🎯</span> <strong>应用场景:</strong> ${escapeHtml(d.application_scenario || '暂无')}</div>`;
+        html += `<div><span style="color:#faad14;">💡</span> <strong>推荐理由:</strong> ${escapeHtml(d.opportunity_reason || '暂无')}</div>`;
+        html += `<div><span style="color:#262626;">👤</span> <strong>联系人:</strong> ${escapeHtml(d.contact_person || '未提供')} ${d.contact_phone ? '(' + escapeHtml(d.contact_phone) + ')' : ''}</div>`;
+        html += '</div>';
+
+        // 5. 结构化数据表格 (核心展示区)
+        html += '<div class="structured-table-wrap" style="margin-bottom:20px; border:1px solid #f0f0f0; border-radius:8px; overflow:hidden;">';
+        html += '<table style="width:100%; border-collapse:collapse; font-size:15px; background:#fff;">';
+        
+        // 处理预算和中标金额的逻辑
+        let budgetDisplay = d.budget_amount ? (d.budget_amount/10000).toFixed(2) + '万' : '—';
+        let winningDisplay = '—';
+        if (it.is_aggregated && d.winning_info && d.winning_info.amount) {
+            winningDisplay = (d.winning_info.amount/10000).toFixed(2) + '万';
+        } else if (d.winning_amount) {
+            winningDisplay = (d.winning_amount/10000).toFixed(2) + '万';
+        }
+
+        html += `
+            <tr style="border-bottom:1px solid #f0f0f0;">
+                <td style="padding:14px 18px; background:#fafafa; color:#595959; width:120px; font-weight:600;">项目名称</td>
+                <td style="padding:14px 18px; color:#1890ff; font-weight:500;">
+                    <a href="${escapeHtml(finalUrl)}" target="_blank" style="color:#1890ff; text-decoration:none; border-bottom:1px dashed #1890ff;">${escapeHtml(projectName)} <span style="font-size:12px;">🔗</span></a>
+                </td>
+                <td style="padding:14px 18px; background:#fafafa; color:#595959; width:120px; font-weight:600;">采购单位</td>
+                <td style="padding:14px 18px; color:#262626; font-weight:500;">${escapeHtml(buyer)}</td>
+            </tr>
+            <tr style="border-bottom:1px solid #f0f0f0;">
+                <td style="padding:14px 18px; background:#fafafa; color:#595959; font-weight:600;">预算/中标</td>
+                <td style="padding:14px 18px; color:#f5222d; font-weight:700;">${budgetDisplay} / ${winningDisplay}</td>
+                <td style="padding:14px 18px; background:#fafafa; color:#595959; font-weight:600;">所属地区</td>
+                <td style="padding:14px 18px; color:#262626;">${escapeHtml(d.province || '')} ${escapeHtml(d.city || '')}</td>
+            </tr>
+            <tr>
+                <td style="padding:14px 18px; background:#fafafa; color:#595959; font-weight:600;">内容摘要</td>
+                <td colspan="3" style="padding:14px 18px; color:#595959; line-height:1.8; font-size:14px;">${escapeHtml(d.content_summary || '暂无详细摘要')}</td>
+            </tr>
+        `;
+        html += '</table></div>';
+
+        // 6. 技术要点 (黄色警示框风格)
+        if (d.technical_requirements_summary) {
+            html += '<div class="tech-summary" style="padding:14px 18px;background:#fffbe6;border:1px solid #ffe58f;border-radius:6px;margin-bottom:20px;font-size:14px;line-height:1.6;color:#595959;display:flex;gap:10px;align-items:flex-start;">';
+            html += '<span style="font-size:18px;">⚒️</span>';
+            html += '<div><strong>技术要点:</strong> ' + escapeHtml(d.technical_requirements_summary) + '</div>';
+            html += '</div>';
+        }
+
+        // 7. 项目生命周期 (仅汇总模式)
+        if (it.is_aggregated && d.events && d.events.length > 0) {
+            html += '<div class="project-timeline" style="margin-bottom:20px; padding:16px; background:#f9f9f9; border-radius:8px; border:1px dashed #d9d9d9;">';
+            html += '<div style="font-weight:600;margin-bottom:12px;color:#262626;font-size:14px;display:flex;align-items:center;gap:8px;"><span>📅</span> 项目生命周期公告：</div>';
+            html += '<div style="display:flex;flex-direction:column;gap:10px;padding-left:15px;border-left:2px solid #e8e8e8;">';
+            d.events.forEach(ev => {
+                const evColor = ev.type === '中标' ? '#52c41a' : (ev.type === '招标' ? '#1890ff' : '#faad14');
+                const evDate = ev.date ? ev.date.split('T')[0] : '未知时间';
+                html += `
+                    <div style="position:relative;padding-bottom:2px;">
+                        <span style="position:absolute;left:-20px;top:6px;width:8px;height:8px;border-radius:50%;background:${evColor};border:2px solid #fff;box-shadow:0 0 0 1px ${evColor};"></span>
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <a href="${ev.url}" target="_blank" style="color:#595959;text-decoration:none;font-size:13px;flex:1;margin-right:15px;">
+                                <span style="color:${evColor};font-weight:600;">[${ev.type}]</span> ${escapeHtml(ev.title)}
+                            </a>
+                            <div style="text-align:right; min-width:150px;">
+                                <span style="color:#8c8c8c;font-size:12px;margin-right:10px;">${evDate}</span>
+                                <span style="color:#8c8c8c;font-size:12px;font-family:monospace;">${ev.budget ? (ev.budget/10000).toFixed(2)+'万' : ''}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div></div>';
+        }
+        
+        // 8. 底部：关键词与详情按钮
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;padding-top:16px;border-top:1px solid #f0f0f0;">';
+        html += '<div class="keywords" style="display:flex;flex-wrap:wrap;gap:8px;">' + keywordsHtml + '</div>';
+        html += '<a class="detail-link" href="' + escapeHtml(finalUrl) + '" target="_blank" rel="noopener noreferrer" style="padding:6px 16px;border:1px solid #1890ff;color:#1890ff;border-radius:4px;text-decoration:none;font-size:14px;font-weight:500;transition:all 0.2s;">查看详情 ↗</a>';
+        html += "</div>";
+        
         html += "</article>";
       });
       html += "</div>";
@@ -959,6 +1222,41 @@
         html += '<div class="empty">0 行，可调整 offset 或确认表中是否已有数据。</div>';
       }
       wrap.innerHTML = html;
+    }
+
+    async function refreshFilterOptions() {
+      const provSel = document.getElementById("retrieval-tenders-province-select");
+      const typeSel = document.getElementById("retrieval-tenders-type-select");
+      if (!provSel || !typeSel) return;
+
+      try {
+        const res = await fetch(apiPath("api/retrieval/filter-options"));
+        const { data } = await readJsonResponse(res);
+        if (res.ok && data) {
+          // 填充省份
+          if (data.provinces) {
+            provSel.innerHTML = '<option value="">— 全部地区 —</option>';
+            data.provinces.forEach(p => {
+              const opt = document.createElement("option");
+              opt.value = p;
+              opt.textContent = p;
+              provSel.appendChild(opt);
+            });
+          }
+          // 填充公告类型
+          if (data.notice_types) {
+            typeSel.innerHTML = '<option value="">— 全部类型 —</option>';
+            data.notice_types.forEach(t => {
+              const opt = document.createElement("option");
+              opt.value = t;
+              opt.textContent = t;
+              typeSel.appendChild(opt);
+            });
+          }
+        }
+      } catch (err) {
+        console.error("加载筛选选项失败:", err);
+      }
     }
 
     async function refreshProducts() {
@@ -1085,6 +1383,26 @@
       updateFromFirst();
     }
 
+    // 同步快速切换并重新搜索
+    function syncAndSearch(type) {
+      const mainExclude = document.getElementById("retrieval-tenders-exclude-won");
+      const quickExclude = document.getElementById("results-exclude-won-toggle");
+      const mainSort = document.getElementById("retrieval-tenders-sort-by");
+      const quickSort = document.getElementById("results-sort-by-toggle");
+      const productSelect = document.getElementById("retrieval-tenders-product-select");
+
+      if (type === 'exclude_won') {
+        mainExclude.checked = quickExclude.checked;
+      } else if (type === 'sort_by') {
+        mainSort.value = quickSort.value;
+      }
+
+      // 如果已经选择了产品，则自动触发搜索
+      if (productSelect.value) {
+        document.getElementById("btn-retrieval-tenders-search").click();
+      }
+    }
+
     document.getElementById("btn-retrieval-tenders-load-products").addEventListener("click", refreshProducts);
     document.getElementById("btn-demo-db-refresh").addEventListener("click", refreshDbTableInfo);
     document.getElementById("btn-demo-db-load").addEventListener("click", loadDbRows);
@@ -1106,7 +1424,11 @@
         use_vector: document.getElementById("retrieval-tenders-use-vector").checked,
         use_bm25: document.getElementById("retrieval-tenders-use-bm25").checked,
         vector_weight: Number(document.getElementById("retrieval-tenders-vector-weight").value),
-        bm25_weight: Number(document.getElementById("retrieval-tenders-bm25-weight").value)
+        bm25_weight: Number(document.getElementById("retrieval-tenders-bm25-weight").value),
+        province: document.getElementById("retrieval-tenders-province-select").value || null,
+        notice_type: document.getElementById("retrieval-tenders-type-select").value || null,
+        exclude_won: document.getElementById("retrieval-tenders-exclude-won").checked,
+        sort_by: document.getElementById("retrieval-tenders-sort-by").value
       };
 
       setOut("招标库检索请求已发送…", false);
@@ -1146,6 +1468,7 @@
 
     syncSliders();
     refreshProducts();
+    refreshFilterOptions();
     refreshDbTableInfo();
     loadDbRows();
 
