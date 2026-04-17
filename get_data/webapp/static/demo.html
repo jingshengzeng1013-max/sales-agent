@@ -119,9 +119,9 @@
 
     .form-grid {
       display: grid;
-      grid-template-columns: repeat(5, minmax(0, 1fr));
-      gap: 16px;
-      align-items: end;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 20px;
+      align-items: start;
       margin-top: 16px;
     }
 
@@ -734,10 +734,13 @@
         <div class="field">
           <label for="retrieval-tenders-top-k">返回条数 top_k</label>
           <div class="field-hint">1-2000</div>
-          <input id="retrieval-tenders-top-k" type="number" min="1" max="2000" value="20" />
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <input id="retrieval-tenders-top-k" type="number" min="1" max="2000" value="50" style="flex: 1;" />
+            <button type="submit" id="btn-retrieval-tenders-search" style="white-space: nowrap;">🔎 检索招标</button>
+          </div>
         </div>
 
-        <div class="field">
+        <div class="field" style="display: none;">
           <label for="retrieval-tenders-min-score">最低综合分 min_score</label>
           <div class="field-hint">0-1</div>
           <input id="retrieval-tenders-min-score" type="number" min="0" max="1" step="0.05" value="0" />
@@ -759,14 +762,14 @@
 
         <div class="field">
           <span class="field-name">检索分支 & 过滤</span>
-          <div class="checks">
+          <div class="checks" style="margin-top: 4px;">
             <label><input type="checkbox" id="retrieval-tenders-use-vector" checked /> FAISS 向量</label>
             <label><input type="checkbox" id="retrieval-tenders-use-bm25" checked /> BM25</label>
             <label style="color: #f5222d; font-weight: 600;"><input type="checkbox" id="retrieval-tenders-exclude-won" /> 隐藏已中标</label>
           </div>
         </div>
 
-        <div class="field">
+        <div class="field" style="display: none;">
           <label for="retrieval-tenders-sort-by">排序方式</label>
           <div class="field-hint">结果排列顺序</div>
           <select id="retrieval-tenders-sort-by">
@@ -775,13 +778,11 @@
           </select>
         </div>
 
-        <div class="actions">
-          <button type="submit" id="btn-retrieval-tenders-search">🔎 检索招标</button>
+        <div class="actions" style="grid-column: span 4; margin-top: 10px; padding-top: 15px; border-top: 1px solid #f0f0f0; display: flex; justify-content: space-between; align-items: center;">
+          <div class="status-line" id="status-line" style="margin: 0; font-size: 14px;">产品列表已刷新，可直接检索。</div>
           <button type="button" class="secondary" id="btn-retrieval-tenders-load-products">🔄 刷新产品列表</button>
         </div>
       </form>
-
-      <div id="status-line" class="status-line">打开页面后可直接加载产品列表并发起检索。</div>
     </section>
 
     <section class="card" id="results-card">
