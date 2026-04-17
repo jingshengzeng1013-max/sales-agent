@@ -116,7 +116,7 @@ def get_llm_config(provider=None):
 # 爬虫配置
 CRAWLER_CONFIG = {
     "base_url": "https://search.ccgp.gov.cn/bxsearch",
-    "keyword": "车载",
+    "keyword": "通信",
     "delay_min": 2,
     "delay_max": 5,
     "page_index": 1,

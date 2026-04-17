@@ -287,10 +287,12 @@ class DualRetriever:
                 
                 # 排序逻辑
                 if sort_by == "date":
-                    # 按时间倒序，处理 None 值情况（排在最后）
-                    return sorted(final_project_results, key=lambda x: x["latest_date"] or "", reverse=True)[:top_k]
+                    # 1. 先按分数取 TopK (已经在上面计算好了 final_project_results)
+                    # 2. 对这 TopK 条结果按时间倒序排列
+                    top_by_score = sorted(final_project_results, key=lambda x: x["score"], reverse=True)[:top_k]
+                    return sorted(top_by_score, key=lambda x: x["latest_date"] or "", reverse=True)
                 else:
-                    # 默认按分数排序
+                    # 默认完全按分数排序
                     return sorted(final_project_results, key=lambda x: x["score"], reverse=True)[:top_k]
 
         # 5. 默认按单条公告排序输出

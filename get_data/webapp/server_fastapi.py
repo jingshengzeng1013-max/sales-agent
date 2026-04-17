@@ -272,12 +272,26 @@ if __name__ == '__main__':
     import subprocess
     import os
 
-    # 自动清理端口
+    # 自动获取本机 IP
+    import socket
+    def get_host_ip():
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(('8.8.8.8', 80))
+            ip = s.getsockname()[0]
+        finally:
+            s.close()
+        return ip
+    
+    host_ip = get_host_ip()
     port = 8103
+
+    # 自动清理端口
     if os.name == 'nt':  # Windows
         try:
             output = subprocess.check_output(f'netstat -ano | findstr :{port}', shell=True).decode()
             for line in output.strip().split('\n'):
+                if not line.strip(): continue
                 pid = line.strip().split()[-1]
                 if pid != '0':
                     print(f"[INFO] 正在清理端口 {port} 上的进程 PID: {pid}")
@@ -285,9 +299,10 @@ if __name__ == '__main__':
         except subprocess.CalledProcessError:
             pass # 端口未被占用
 
-    print("\n" + "="*50)
+    print("\n" + "="*60)
     print("FastAPI 服务启动中...")
+    print(f"本地访问地址: http://127.0.0.1:{port}/static/demo.html")
+    print(f"局域网访问地址: http://{host_ip}:{port}/static/demo.html")
     print(f"API 文档地址: http://127.0.0.1:{port}/docs")
-    print(f"前端演示页面: http://127.0.0.1:{port}/static/demo.html")
-    print("="*50 + "\n")
+    print("="*60 + "\n")
     uvicorn.run(app, host="0.0.0.0", port=port)
