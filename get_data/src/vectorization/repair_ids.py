@@ -12,33 +12,31 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(BASE_DIR))
 
 from src.config import DB_PATH
+from src.utils.jsonl_helper import load_jsonl, save_jsonl
 
 def repair_json_ids():
     conn = sqlite3.connect(str(DB_PATH))
     cursor = conn.cursor()
 
     # 1. 修复产品数据
-    product_json = BASE_DIR / "data/embedding/product_embedded.json"
-    if product_json.exists():
-        print(f"[INFO] 正在修复产品数据: {product_json}")
-        with open(product_json, 'r', encoding='utf-8') as f:
-            products = json.load(f)
+    product_jsonl = BASE_DIR / "data/embedding/product_embedded.jsonl"
+    if product_jsonl.exists():
+        print(f"[INFO] 正在修复产品数据: {product_jsonl}")
+        products = load_jsonl(str(product_jsonl))
         
         # 产品表目前可能没有 uuid，我们先用 id 或者生成一个
         for i, p in enumerate(products):
             if 'uuid' not in p:
                 p['uuid'] = p.get('id') or f"prod_{i+1}"
         
-        with open(product_json, 'w', encoding='utf-8') as f:
-            json.dump(products, f, ensure_ascii=False, indent=2)
+        save_jsonl(products, str(product_jsonl))
         print("[SUCCESS] 产品数据修复完成")
 
     # 2. 修复标讯数据
-    tender_json = BASE_DIR / "data/embedding/tenders_embedded.json"
-    if tender_json.exists():
-        print(f"[INFO] 正在修复标讯数据: {tender_json}")
-        with open(tender_json, 'r', encoding='utf-8') as f:
-            tenders = json.load(f)
+    tender_jsonl = BASE_DIR / "data/embedding/tenders_embedded.jsonl"
+    if tender_jsonl.exists():
+        print(f"[INFO] 正在修复标讯数据: {tender_jsonl}")
+        tenders = load_jsonl(str(tender_jsonl))
         
         # 从数据库获取 url -> uuid 映射
         cursor.execute("SELECT detail_url, uuid FROM tenders")
@@ -57,8 +55,7 @@ def repair_json_ids():
         # 过滤掉没有 uuid 的（确保索引一致性）
         valid_tenders = [t for t in tenders if t.get('uuid')]
         
-        with open(tender_json, 'w', encoding='utf-8') as f:
-            json.dump(valid_tenders, f, ensure_ascii=False, indent=2)
+        save_jsonl(valid_tenders, str(tender_jsonl))
         print(f"[SUCCESS] 标讯数据修复完成，共修复 {repaired_count} 条，有效记录 {len(valid_tenders)} 条")
 
     conn.close()

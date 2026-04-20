@@ -17,6 +17,7 @@ if str(root_dir) not in sys.path:
     sys.path.append(str(root_dir))
 
 from src.config import EMBEDDING_CONFIG, DATA_DIR
+from src.utils.jsonl_helper import load_jsonl, save_jsonl
 
 class Vectorizer:
     def __init__(self, base_url: str = None, api_key: str = None, model: str = None):
@@ -48,15 +49,18 @@ class Vectorizer:
             return [[0.0] * self.dimension for _ in texts]
 
     def vectorize_products(self, product_path: str, output_path: str):
-        """将 product.json 向量化并保存"""
+        """将 product.jsonl 向量化并保存"""
+        # 统一后缀
+        product_path = str(product_path).replace(".json", ".jsonl") if not str(product_path).endswith(".jsonl") else str(product_path)
+        output_path = str(output_path).replace(".json", ".jsonl") if not str(output_path).endswith(".jsonl") else str(output_path)
+        
         print(f"\n[INFO] 正在向量化产品数据: {product_path}")
         
         if not os.path.exists(product_path):
             print(f"[ERROR] 文件不存在: {product_path}")
             return
 
-        with open(product_path, 'r', encoding='utf-8') as f:
-            products = json.load(f)
+        products = load_jsonl(product_path)
         
         # 构建用于向量化的文本内容：全部字段拼接在一起
         texts_to_embed = []
@@ -81,12 +85,15 @@ class Vectorizer:
         # 确保输出目录存在
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
             
-        with open(output_path, 'w', encoding='utf-8') as f:
-            json.dump(products, f, ensure_ascii=False, indent=2)
+        save_jsonl(products, output_path)
         print(f"[SUCCESS] 产品向量化完成，保存至: {output_path}")
 
     def vectorize_tenders(self, tender_path: str, output_path: str):
-        """将 tenders_structured.json 向量化并保存"""
+        """将 tenders_structured.jsonl 向量化并保存"""
+        # 统一后缀
+        tender_path = str(tender_path).replace(".json", ".jsonl") if not str(tender_path).endswith(".jsonl") else str(tender_path)
+        output_path = str(output_path).replace(".json", ".jsonl") if not str(output_path).endswith(".jsonl") else str(output_path)
+
         print(f"\n[INFO] 正在向量化标讯数据: {tender_path}")
         if not os.path.exists(tender_path):
             print(f"[ERROR] 文件不存在: {tender_path}")
@@ -103,9 +110,8 @@ class Vectorizer:
         conn.close()
         
         if not tenders:
-            print("[WARNING] 数据库中没有结构化数据，尝试从 JSON 加载...")
-            with open(tender_path, 'r', encoding='utf-8') as f:
-                tenders = json.load(f)
+            print("[WARNING] 数据库中没有结构化数据，尝试从 JSONL 加载...")
+            tenders = load_jsonl(tender_path)
         
         # 构建用于向量化的文本内容（聚焦需求匹配）
         texts_to_embed = []
@@ -143,8 +149,7 @@ class Vectorizer:
         # 确保输出目录存在
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
             
-        with open(output_path, 'w', encoding='utf-8') as f:
-            json.dump(tenders, f, ensure_ascii=False, indent=2)
+        save_jsonl(tenders, output_path)
         print(f"[SUCCESS] 标讯向量化完成，保存至: {output_path}")
 
 if __name__ == "__main__":
@@ -152,11 +157,11 @@ if __name__ == "__main__":
     vectorizer = Vectorizer()
     
     # 向量化产品
-    product_in = "D:/sales_agent/get_data/data/product.json"
-    product_out = "D:/sales_agent/get_data/data/embedding/product_embedded.json"
+    product_in = "D:/sales_agent/get_data/data/product.jsonl"
+    product_out = "D:/sales_agent/get_data/data/embedding/product_embedded.jsonl"
     vectorizer.vectorize_products(product_in, product_out)
     
     # 向量化标讯
-    tender_in = "D:/sales_agent/get_data/data/output/etl/tenders_structured.json"
-    tender_out = "D:/sales_agent/get_data/data/embedding/tenders_embedded.json"
+    tender_in = "D:/sales_agent/get_data/data/output/etl/tenders_structured.jsonl"
+    tender_out = "D:/sales_agent/get_data/data/embedding/tenders_embedded.jsonl"
     vectorizer.vectorize_tenders(tender_in, tender_out)

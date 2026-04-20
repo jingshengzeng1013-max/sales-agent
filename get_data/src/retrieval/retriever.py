@@ -6,6 +6,7 @@
 import os
 import sys
 import json
+import logging
 import numpy as np
 import faiss
 import jieba
@@ -19,6 +20,9 @@ sys.path.append(str(BASE_DIR))
 
 from src.config import EMBEDDING_CONFIG, INDEX_DIR, TENDER_INDEX_DIR
 from src.vectorization.vectorize_data import Vectorizer
+from src.utils.jsonl_helper import load_jsonl
+
+logger = logging.getLogger("retriever")
 
 class DualRetriever:
     def __init__(self, data_type: str = "product"):
@@ -33,23 +37,23 @@ class DualRetriever:
         if data_type == "product":
             self.index_path = INDEX_DIR / "product.index"
             self.id_map_path = INDEX_DIR / "product_ids.json"
-            self.raw_data_path = BASE_DIR / "data/embedding/product_embedded.json"
+            self.raw_data_path = BASE_DIR / "data/embedding/product_embedded.jsonl"
         else:
             self.index_path = TENDER_INDEX_DIR / "tenders.index"
             self.id_map_path = TENDER_INDEX_DIR / "tenders_ids.json"
-            self.raw_data_path = BASE_DIR / "data/embedding/tenders_embedded.json"
+            self.raw_data_path = BASE_DIR / "data/embedding/tenders_embedded.jsonl"
             
         self.load_resources()
 
     def load_resources(self):
         """加载索引、ID映射和原始数据"""
-        print(f"[INFO] 正在加载 {self.data_type} 检索资源...")
+        logger.info(f"正在加载 {self.data_type} 检索资源...")
         
         # 1. 加载 FAISS 索引
         if os.path.exists(self.index_path):
             self.index = faiss.read_index(str(self.index_path))
         else:
-            print(f"[ERROR] 索引文件不存在: {self.index_path}")
+            logger.error(f"索引文件不存在: {self.index_path}")
             self.index = None
 
         # 2. 加载 ID 映射
@@ -61,14 +65,13 @@ class DualRetriever:
 
         # 3. 加载原始数据并构建 BM25 索引
         if os.path.exists(self.raw_data_path):
-            print(f"[INFO] 正在为 {self.data_type} 构建 BM25 索引 (流式处理)...")
+            logger.info(f"正在为 {self.data_type} 构建 BM25 索引 (流式处理)...")
             self.data_dict = {}
             self.raw_data = [] # 保持与 corpus 顺序一致
             corpus = []
             
-            # 使用流式读取或分块处理（这里先简单处理，只存必要字段以节省内存）
-            with open(self.raw_data_path, 'r', encoding='utf-8') as f:
-                temp_data = json.load(f)
+            # 使用 JSONL 加载
+            temp_data = load_jsonl(str(self.raw_data_path))
                 
             for item in temp_data:
                 # 统一 ID 提取逻辑：优先使用 uuid，其次是 id 或 project_id
@@ -224,10 +227,9 @@ class DualRetriever:
         # 4. 按项目汇总逻辑 (如果启用)
         if aggregate_by_project and self.data_type == "tender":
             # 加载汇总后的项目数据
-            agg_path = BASE_DIR / "data/output/etl/projects_aggregated.json"
+            agg_path = BASE_DIR / "data/output/etl/projects_aggregated.jsonl"
             if os.path.exists(agg_path):
-                with open(agg_path, 'r', encoding='utf-8') as f:
-                    agg_projects = json.load(f)
+                agg_projects = load_jsonl(str(agg_path))
                 
                 # 构建 URL 到项目模块的映射
                 url_to_project = {}

@@ -1073,7 +1073,7 @@
         html += "</div>";
         html += '<div class="result-score" style="text-align:right;background:#f0f5ff;padding:10px 20px;border-radius:8px;border:1px solid #adc6ff;min-width:120px;">';
         html += '<div style="font-size:32px;font-weight:800;color:#2f54eb;line-height:1;">' + escapeHtml(score) + "</div>";
-        html += '<div style="font-size:11px;color:#597ef7;margin-top:6px;text-transform:uppercase;letter-spacing:1px;font-weight:600;">' + (it.is_aggregated ? 'AVG RRF' : 'RRF Score') + '</div>';
+        html += '<div style="font-size:11px;color:#597ef7;margin-top:6px;text-transform:uppercase;letter-spacing:1px;font-weight:600;">' + (it.is_aggregated ? '综合匹配分' : '匹配得分') + '</div>';
         html += "</div></div>";
 
         // 2. 分数细节面板
@@ -1084,13 +1084,13 @@
                 <div style="font-size:11px;color:#8c8c8c;margin-top:4px;">${label}</div>
             </div>
         `;
-        html += scoreItem(vec, it.is_aggregated ? 'Avg Vector' : 'Vector Sim', '#722ed1');
+        html += scoreItem(vec, it.is_aggregated ? '语义相似度' : '语义分', '#722ed1');
         html += '<div style="width:1px;background:#e8e8e8;"></div>';
-        html += scoreItem(bm25, it.is_aggregated ? 'Avg BM25' : 'BM25 Score', '#52c41a');
+        html += scoreItem(bm25, it.is_aggregated ? '关键词匹配' : '关键词分', '#52c41a');
         html += '<div style="width:1px;background:#e8e8e8;"></div>';
-        html += scoreItem(bm25_norm, it.is_aggregated ? 'Avg Norm' : 'BM25 Norm', '#faad14');
+        html += scoreItem(bm25_norm, it.is_aggregated ? '关键词分数归一化' : '标准分', '#faad14');
         html += '<div style="width:1px;background:#e8e8e8;"></div>';
-        html += scoreItem(raw, 'RRF Raw', '#bfbfbf');
+        html += scoreItem(raw, '原始融合分', '#bfbfbf');
         html += '</div>';
 
         // 3. 核心指标行 (预算 & 机会)

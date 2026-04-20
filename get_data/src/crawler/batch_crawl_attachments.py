@@ -15,6 +15,7 @@ from urllib.parse import urljoin
 # 添加项目路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import CRAWLER_OUTPUT_DIR
+from src.utils.jsonl_helper import load_jsonl, save_jsonl
 
 # 输出目录
 OUTPUT_DIR = CRAWLER_OUTPUT_DIR
@@ -139,50 +140,22 @@ def extract_uuid_from_url(url):
     return match.group(1) if match else None
 
 
-def load_tenders_from_json(json_path=None):
-    """从列表 JSON 文件中加载招标数据"""
-    if json_path is None:
-        json_path = OUTPUT_DIR / "tenders_list.json"
+def load_tenders_from_jsonl(jsonl_path=None):
+    """从列表 JSONL 文件中加载招标数据"""
+    if jsonl_path is None:
+        jsonl_path = OUTPUT_DIR / "tenders_list.jsonl"
 
-    if not os.path.exists(json_path):
-        print(f"[ERROR] JSON 文件不存在：{json_path}")
+    if not os.path.exists(jsonl_path):
+        print(f"[ERROR] JSONL 文件不存在：{jsonl_path}")
         return []
 
-    with open(json_path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
+    data = load_jsonl(str(jsonl_path))
 
     # 返回有 id 和 detail_url 的记录
     result = []
     for idx, item in enumerate(data, 1):
         result.append((idx, item.get('project_name'), item.get('detail_url')))
     return result
-
-
-def load_existing_json(json_path):
-    """加载已有的 JSON 数据"""
-    if os.path.exists(json_path):
-        with open(json_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    return []
-
-
-def save_to_json(results, json_path):
-    """保存数据到 JSON 文件"""
-    existing = load_existing_json(json_path)
-    existing_urls = {item.get('download_url') for item in existing}
-
-    new_count = 0
-    for item in results:
-        if item.get('download_url') not in existing_urls:
-            existing.append(item)
-            new_count += 1
-
-    with open(json_path, 'w', encoding='utf-8') as f:
-        json.dump(existing, f, indent=2, ensure_ascii=False)
-
-    print(f"[JSON] 新增 {new_count} 条，共 {len(existing)} 条")
-    print(f"[JSON] 已保存到：{json_path}")
-    return new_count
 
 
 def run_crawl_attachments():
@@ -192,13 +165,14 @@ def run_crawl_attachments():
     Returns:
         dict: 爬取结果统计
     """
-    output_json = OUTPUT_DIR / "tenders_attachments.json"
-    print(f"[INFO] 输出文件：{output_json}")
+    output_jsonl = OUTPUT_DIR / "tenders_attachments.jsonl"
+    print(f"[INFO] 输出文件：{output_jsonl}")
 
-    tenders = load_tenders_from_json()
+    tenders = load_tenders_from_jsonl()
     print(f"[INFO] Found {len(tenders)} tenders with detail_url")
 
-    existing = load_existing_json(output_json)
+    output_jsonl = OUTPUT_DIR / "tenders_attachments.jsonl"
+    existing = load_jsonl(str(output_jsonl))
     existing_urls = {item.get('download_url') for item in existing}
     print(f"[INFO] 已有 {len(existing)} 条附件记录")
 
@@ -255,13 +229,11 @@ def run_crawl_attachments():
 
     print("\n" + "=" * 60)
     if all_attachments:
-        existing.extend(all_attachments)
-        with open(output_json, 'w', encoding='utf-8') as f:
-            json.dump(existing, f, indent=2, ensure_ascii=False)
-        print(f"[JSON] 新增 {len(all_attachments)} 条，共 {len(existing)} 条")
-        print(f"[JSON] 已保存到：{output_json}")
+        save_jsonl(all_attachments, str(output_jsonl), append=True)
+        print(f"[JSONL] 新增 {len(all_attachments)} 条，共 {len(existing) + len(all_attachments)} 条")
+        print(f"[JSONL] 已保存到：{output_jsonl}")
     else:
-        print("[JSON] 无新增数据")
+        print("[JSONL] 无新增数据")
 
     print("\n" + "=" * 60)
     print(f"成功：{stats['success']}, 失败：{stats['failed']}")
@@ -271,7 +243,7 @@ def run_crawl_attachments():
     return {
         "success": True,
         "stats": stats,
-        "json_path": str(output_json)
+        "json_path": str(output_jsonl)
     }
 
 

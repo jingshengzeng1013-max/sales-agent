@@ -117,10 +117,18 @@ def get_llm_config(provider=None):
 CRAWLER_CONFIG = {
     "base_url": "https://search.ccgp.gov.cn/bxsearch",
     "keyword": "通信",
-    "delay_min": 2,
-    "delay_max": 5,
-    "page_index": 1,
-    "timeout": 30,
+    "delay_min": 0.5,
+    "delay_max": 1.5,
+    "page_index": 100,          # 起始页码
+    "max_pages": 100,         # 爬取页数（0表示爬取所有，直到翻不动为止）
+    "timeout": 10,            # 全局默认超时
+    # 代理配置
+    "use_proxy": True,
+    "proxy_api_url": "https://share.proxy.qg.net/get?key=F8ECD839&num=5&area=&isp=0&format=txt&seq=\r\n&distinct=false", # 一次提取10个
+    "proxy_num": 5,   # 提取数量
+    "proxy_ttl": 60,  # 代理 IP 有效期（秒）
+    "proxy_user": "F8ECD839",      # 账密模式：Key
+    "proxy_password": "0FC399C64B0C",          # 账密模式：AuthPwd (请在此填入您的授权密码)
     # URL 参数配置
     "searchtype": "2",        # 搜索类型：1=标题，2=全文
     "bidSort": "0",           # 排序方式：0=时间，1=相关性

@@ -7,7 +7,9 @@ import os
 import sys
 import json
 import sqlite3
+import logging
 import numpy as np
+from datetime import datetime
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -19,8 +21,27 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
+# 配置日志
+LOG_DIR = BASE_DIR / "logs" / "api_server"
+if not LOG_DIR.exists():
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+log_filename = f"api_server_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+log_path = LOG_DIR / log_filename
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_path, encoding='utf-8'),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger("api_server")
+
 from src.config import DB_PATH, DATA_DIR
 from src.retrieval.retriever import DualRetriever
+from src.utils.jsonl_helper import load_jsonl
 
 app = FastAPI(title="销售情报系统 API", description="打通数据到前端的检索与展示服务")
 
@@ -34,7 +55,7 @@ app.add_middleware(
 )
 
 # 初始化检索器
-print("[INFO] 正在初始化双路检索器...")
+logger.info("正在初始化双路检索器...")
 product_retriever = DualRetriever(data_type="product")
 tender_retriever = DualRetriever(data_type="tender")
 
@@ -96,7 +117,7 @@ async def search_tenders(req: SearchTendersRequest):
     if query_vector:
         query_vector = np.array([query_vector]).astype('float32')
     
-    print(f"[API] 正在为产品 [{product.get('name')}] 执行混合检索...")
+    logger.info(f"[API] 正在为产品 [{product.get('name')}] 执行混合检索...")
     
     # 3. 执行检索
     results = tender_retriever.hybrid_search(
@@ -294,15 +315,15 @@ if __name__ == '__main__':
                 if not line.strip(): continue
                 pid = line.strip().split()[-1]
                 if pid != '0':
-                    print(f"[INFO] 正在清理端口 {port} 上的进程 PID: {pid}")
+                    logger.info(f"[INFO] 正在清理端口 {port} 上的进程 PID: {pid}")
                     subprocess.run(f'taskkill /F /PID {pid}', shell=True)
         except subprocess.CalledProcessError:
             pass # 端口未被占用
 
-    print("\n" + "="*60)
-    print("FastAPI 服务启动中...")
-    print(f"本地访问地址: http://127.0.0.1:{port}/static/demo.html")
-    print(f"局域网访问地址: http://{host_ip}:{port}/static/demo.html")
-    print(f"API 文档地址: http://127.0.0.1:{port}/docs")
-    print("="*60 + "\n")
+    logger.info("\n" + "="*60)
+    logger.info("FastAPI 服务启动中...")
+    logger.info(f"本地访问地址: http://127.0.0.1:{port}/static/demo.html")
+    logger.info(f"局域网访问地址: http://{host_ip}:{port}/static/demo.html")
+    logger.info(f"API 文档地址: http://127.0.0.1:{port}/docs")
+    logger.info("="*60 + "\n")
     uvicorn.run(app, host="0.0.0.0", port=port)

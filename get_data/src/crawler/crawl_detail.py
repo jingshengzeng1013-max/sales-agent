@@ -26,13 +26,15 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 from src.config import CRAWLER_OUTPUT_DIR
+from src.crawler.proxy_manager import proxy_manager
+from src.utils.jsonl_helper import load_jsonl, save_jsonl, save_jsonl_single
 
 # 输出目录
 OUTPUT_DIR = CRAWLER_OUTPUT_DIR
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# 并发配置：3 通道
-CONCURRENT_CHANNELS = 3
+# 并发配置：8 通道 (配合 5-10 个代理 IP)
+CONCURRENT_CHANNELS = 8
 REQUEST_TIMEOUT = 30
 
 # 请求节奏：随机间隔（秒），降低瞬时 QPS、减少封 IP / 限流风险
@@ -94,29 +96,54 @@ def _fetch_detail_single(
     post_sleep_range: tuple[float, float] | None = None,
 ) -> tuple[str, str | None]:
     """
-    单个 URL 爬取（通道化）
+    单个 URL 爬取（通道化），支持自动代理刷新
     post_sleep_range: 本次 HTTP 结束后随机休眠区间（秒），用于并发降速防封。
     Returns: (url, html_content or None)
     """
     print(f"\n[CHAN-{channel}] [FETCH] {url[:90]}...")
 
-    try:
-        # 轻微错开多线程同时打第一包
-        time.sleep(random.uniform(0, 0.35))
-        r = requests_cffi.get(url, impersonate="chrome124", timeout=REQUEST_TIMEOUT)
+    max_retries = 2
+    for attempt in range(max_retries):
+        try:
+            # 轻微错开多线程同时打第一包
+            time.sleep(random.uniform(0, 0.35))
+            
+            # 获取当前可用代理
+            proxies = proxy_manager.get_proxy()
+            
+            r = requests_cffi.get(
+                url, 
+                impersonate="chrome124", 
+                timeout=REQUEST_TIMEOUT,
+                proxies=proxies
+            )
 
-        if r.status_code == 200:
-            print(f"  [CHAN-{channel}] [OK] Status: {r.status_code}, Length: {len(r.text)}")
-            return (url, r.text)
-        else:
-            print(f"  [CHAN-{channel}] [FAIL] Status: {r.status_code}")
-            return (url, None)
+            if r.status_code == 200:
+                # 检查是否被封禁
+                if "频繁访问" in r.text or "请稍后再试" in r.text:
+                    print(f"  [CHAN-{channel}] [BLOCKED] Detected block message, forcing proxy refresh...")
+                    proxy_manager.get_proxy(force_refresh=True)
+                    continue
+                    
+                print(f"  [CHAN-{channel}] [OK] Status: {r.status_code}, Length: {len(r.text)}")
+                return (url, r.text)
+            elif r.status_code in [403, 429]:
+                print(f"  [CHAN-{channel}] [FAIL] Status: {r.status_code}, forcing proxy refresh...")
+                proxy_manager.get_proxy(force_refresh=True)
+            else:
+                print(f"  [CHAN-{channel}] [FAIL] Status: {r.status_code}")
+                return (url, None)
 
-    except Exception as e:
-        print(f"  [CHAN-{channel}] [ERROR] {e}")
-        return (url, None)
-    finally:
-        _sleep_after_request(post_sleep_range)
+        except Exception as e:
+            print(f"  [CHAN-{channel}] [ERROR] {e}")
+            if attempt < max_retries - 1:
+                proxy_manager.get_proxy(force_refresh=True)
+            else:
+                return (url, None)
+        finally:
+            _sleep_after_request(post_sleep_range)
+    
+    return (url, None)
 
 
 def _remove_style_script_tags(html_frag: str) -> str:
@@ -169,24 +196,44 @@ def _html_fragment_to_clean_text(html_frag: str) -> str:
 
 
 def fetch_detail(url):
-    """获取详情页（串行；结束后按 POST_REQUEST_SLEEP_SERIAL 休眠）"""
+    """获取详情页（串行；支持自动代理刷新）"""
     print(f"\n[FETCH] {url}")
 
-    try:
-        r = requests_cffi.get(url, impersonate="chrome124", timeout=30)
+    max_retries = 2
+    for attempt in range(max_retries):
+        try:
+            proxies = proxy_manager.get_proxy()
+            r = requests_cffi.get(
+                url, 
+                impersonate="chrome124", 
+                timeout=30,
+                proxies=proxies
+            )
 
-        if r.status_code == 200:
-            print(f"  [OK] Status: {r.status_code}, Length: {len(r.text)}")
-            return r.text
-        else:
-            print(f"  [FAIL] Status: {r.status_code}")
-            return None
+            if r.status_code == 200:
+                if "频繁访问" in r.text or "请稍后再试" in r.text:
+                    print(f"  [BLOCKED] Detected block message, forcing proxy refresh...")
+                    proxy_manager.get_proxy(force_refresh=True)
+                    continue
+                print(f"  [OK] Status: {r.status_code}, Length: {len(r.text)}")
+                return r.text
+            elif r.status_code in [403, 429]:
+                print(f"  [FAIL] Status: {r.status_code}, forcing proxy refresh...")
+                proxy_manager.get_proxy(force_refresh=True)
+            else:
+                print(f"  [FAIL] Status: {r.status_code}")
+                return None
 
-    except Exception as e:
-        print(f"  [ERROR] {e}")
-        return None
-    finally:
-        _sleep_after_request(POST_REQUEST_SLEEP_SERIAL)
+        except Exception as e:
+            print(f"  [ERROR] {e}")
+            if attempt < max_retries - 1:
+                proxy_manager.get_proxy(force_refresh=True)
+            else:
+                return None
+        finally:
+            _sleep_after_request(POST_REQUEST_SLEEP_SERIAL)
+    
+    return None
 
 
 def _strip_tags_text(s: str) -> str:
@@ -542,23 +589,23 @@ def parse_detail(html, url):
     return data
 
 
-def load_existing_json(json_path):
-    """加载已有的 JSON 数据，增加容错处理"""
-    if os.path.exists(json_path):
-        try:
-            if os.path.getsize(json_path) == 0:
-                return []
-            with open(json_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except (json.JSONDecodeError, Exception) as e:
-            print(f"[WARN] 加载 {json_path} 失败 (可能文件损坏或为空): {e}")
-            return []
-    return []
+def load_existing_jsonl(jsonl_path):
+    """加载已有的 JSONL 数据，增加容错处理"""
+    return load_jsonl(str(jsonl_path))
 
 
-def save_to_json(results, json_path):
-    """保存数据到 JSON：同一 url 只保留一条（文件中已有的优先，不覆盖；本批内重复只记一条）。"""
-    existing = load_existing_json(json_path)
+def save_to_jsonl(results, jsonl_path, is_single=False):
+    """
+    保存数据到 JSONL：同一 url 只保留一条。
+    is_single: 如果为 True，表示 results 是单条记录，采用追加模式。
+    """
+    if is_single:
+        # 单条保存模式，直接追加
+        save_jsonl_single(results, str(jsonl_path))
+        return 1
+
+    # 批量保存模式
+    existing = load_existing_jsonl(jsonl_path)
     by_url: dict[str, dict] = {}
     for item in existing:
         u = _canonical_detail_url(item.get("url") or item.get("detail_url"))
@@ -566,35 +613,36 @@ def save_to_json(results, json_path):
             by_url[u] = item
 
     n_before = len(by_url)
-    for item in results:
+    new_items = results if isinstance(results, list) else [results]
+    to_append = []
+    for item in new_items:
         u = _canonical_detail_url(item.get("url") or item.get("detail_url"))
         if not u:
             continue
         if u not in by_url:
             by_url[u] = item
+            to_append.append(item)
+
+    if to_append:
+        save_jsonl(to_append, str(jsonl_path), append=True)
 
     new_count = len(by_url) - n_before
-    merged = list(by_url.values())
-
-    with open(json_path, 'w', encoding='utf-8') as f:
-        json.dump(merged, f, indent=2, ensure_ascii=False)
-
-    print(f"[JSON] 新增 {new_count} 条，共 {len(merged)} 条（已按 url 去重）")
-    print(f"[JSON] 已保存到：{json_path}")
+    print(f"[JSONL] 新增 {new_count} 条，共 {len(by_url)} 条（已按 url 去重）")
+    print(f"[JSONL] 已保存到：{jsonl_path}")
     return new_count
 
 
 def load_tenders_from_json(json_path=None, return_stats: bool = False):
-    """从列表 JSON 文件中加载待处理的招标。
+    """从列表 JSONL 文件中加载待处理的招标。
 
     同一 canonical detail_url 只保留首次出现的记录（与详情去重逻辑一致）。
     return_stats 为 True 时返回 (out, stats)，否则只返回 out。
     """
     if json_path is None:
-        json_path = OUTPUT_DIR / "tenders_list.json"
+        json_path = OUTPUT_DIR / "tenders_list.jsonl"
 
     if not os.path.exists(json_path):
-        print(f"[ERROR] JSON 文件不存在：{json_path}")
+        print(f"[ERROR] JSONL 文件不存在：{json_path}")
         empty: list[tuple[str, str]] = []
         if return_stats:
             return empty, {
@@ -605,8 +653,7 @@ def load_tenders_from_json(json_path=None, return_stats: bool = False):
             }
         return []
 
-    with open(json_path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
+    data = load_jsonl(str(json_path))
 
     raw_total = len(data)
     seen: set[str] = set()
@@ -662,14 +709,14 @@ def crawl_details(
     # 获取待处理的招标（URL 已为 canonical）
     all_from_list, list_stats = load_tenders_from_json(source_json, return_stats=True)
     print(
-        f"\n[INFO] 列表 JSON 原始 {list_stats['raw_total']} 行；"
+        f"\n[INFO] 列表 JSONL 原始 {list_stats['raw_total']} 行；"
         f"唯一 detail_url {list_stats['unique_urls']} 条；"
         f"重复行 {list_stats['duplicate_rows']}；"
         f"无有效 URL {list_stats['no_url_rows']}"
     )
 
-    existing_detail_json = OUTPUT_DIR / "tenders_detail.json"
-    existing = load_existing_json(existing_detail_json)
+    existing_detail_jsonl = OUTPUT_DIR / "tenders_detail.jsonl"
+    existing = load_existing_jsonl(existing_detail_jsonl)
     existing_urls: set[str] = set()
     for item in existing:
         u = _canonical_detail_url(item.get("url") or item.get("detail_url"))
@@ -681,7 +728,7 @@ def crawl_details(
 
     print(
         f"[INFO] 待爬队列（唯一 URL）{len(all_from_list)} 条；"
-        f"详情 JSON 已存在 {len(existing_urls)} 条（canonical）；"
+        f"详情 JSONL 已存在 {len(existing_urls)} 条（canonical）；"
         f"因已爬取跳过 {skipped_already} 条；尚待爬取 {len(pending)} 条"
     )
 
@@ -710,6 +757,10 @@ def crawl_details(
     seen_this_run: set[str] = set()
     success_count = 0
     failed_count = 0
+    
+    # 创建线程锁，保证多线程写入 JSON 时不冲突
+    import threading
+    file_lock = threading.Lock()
 
     if concurrent and len(pending) > 1:
         # === 并发模式：多通道 ===
@@ -726,19 +777,16 @@ def crawl_details(
                 print(f"[SKIP] 无效 URL: {url[:50]}...")
                 continue
             if nu in existing_urls:
-                print(f"[SKIP] 已有：{nu[:80]}...")
+                # 即使已经在 existing_urls 里，如果文件里没有，也可能需要爬
+                # 这里保持逻辑一致，跳过已存在的
                 continue
             if nu in seen_this_run:
-                print(f"[SKIP] 本批重复：{nu[:80]}...")
                 continue
             seen_this_run.add(nu)
             tasks.append((nu, name))
 
         print(f"[INFO] 实际待爬取：{len(tasks)} 条")
 
-        # 一次性提交全部任务；Executor 会用 max_workers 控制并发。
-        # 切勿对「初始 futures」调用 as_completed 再动态 submit：
-        # as_completed 只等待调用当时快照里的 Future，后续 submit 的结果不会被消费。
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_item = {
                 executor.submit(
@@ -754,15 +802,17 @@ def crawl_details(
                 url, name = future_to_item[future]
 
                 try:
-                    result_url, html = future.result()
+                    result_url, html_content = future.result()
 
-                    if html:
-                        detail_data = parse_detail(html, result_url)
+                    if html_content:
+                        detail_data = parse_detail(html_content, result_url)
                         if detail_data:
                             print(f"  [PARSE] Title: {detail_data['title'][:50]}...")
-                            results.append(detail_data)
-                            existing_urls.add(_canonical_detail_url(result_url) or "")
                             success_count += 1
+                            
+                            # 实时保存单条数据
+                            with file_lock:
+                                save_to_jsonl(detail_data, existing_detail_jsonl, is_single=True)
                     else:
                         failed_count += 1
                         print(f"[FAIL] {url[:80]}...")
@@ -783,37 +833,34 @@ def crawl_details(
             detail_progress.set_postfix(success=success_count)
             nu = _canonical_detail_url(url)
             if not nu:
-                print(f"\n[{i}/{len(pending)}] [SKIP] 无效 URL")
                 continue
             if nu in existing_urls:
-                print(f"\n[{i}/{len(pending)}] [SKIP] 详情 JSON 已有：{nu[:88]}...")
                 continue
             if nu in seen_this_run:
-                print(f"\n[{i}/{len(pending)}] [SKIP] 本批重复 url：{nu[:90]}...")
                 continue
             seen_this_run.add(nu)
 
             print(f"\n[{i}/{len(pending)}] {name[:50]}...")
 
-            html = fetch_detail(nu)
+            html_content = fetch_detail(nu)
 
-            if html:
-                detail_data = parse_detail(html, nu)
+            if html_content:
+                detail_data = parse_detail(html_content, nu)
 
                 if detail_data:
                     print(f"  [PARSE] Title: {detail_data['title'][:50]}...")
                     print(f"  [PARSE] Date: {detail_data['publish_date']}")
-                    print(f"  [PARSE] Type: {detail_data.get('announce_type', '')}")
                     print(f"  [PARSE] Budget: {detail_data['budget']}")
 
-                    results.append(detail_data)
-                    existing_urls.add(nu)
                     success_count += 1
                     detail_progress.set_postfix(success=success_count)
+                    
+                    # 实时保存单条数据
+                    save_to_jsonl(detail_data, existing_detail_jsonl, is_single=True)
 
-    # 保存到 JSON
-    if results:
-        save_to_json(results, existing_detail_json)
+    # 实时保存单条数据
+    # if results:
+    #     save_to_jsonl(results, existing_detail_jsonl)
 
     print(f"\n{'='*60}")
     print(f"Done! 成功 {success_count} 条，失败 {failed_count} 条，共处理 {len(pending)} 条")
@@ -824,7 +871,7 @@ def crawl_details(
         "processed": len(pending),
         "success_count": success_count,
         "failed_count": failed_count,
-        "json_path": str(existing_detail_json)
+        "json_path": str(existing_detail_jsonl)
     }
 
 
