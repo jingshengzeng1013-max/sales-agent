@@ -1,13 +1,33 @@
 # Core dependencies
-curl_cffi
-tqdm
-openai
+curl_cffi==0.14.0
+tqdm==4.67.3
+openai==1.72.0
+fastapi==0.135.2
+uvicorn==0.42.0
+pydantic==2.11.0
+numpy==2.3.0
+jieba==0.42.1
+rank-bm25==0.2.2
+faiss-cpu==1.13.2
+
+# Data Analysis & Storage
+pandas==2.2.3
+sqlite3-api==2.0.1
 
 # Streamlit frontend
-streamlit
+streamlit==1.44.0
 
-# 附件解析（可选）
-pypdf          # PDF 解析
-python-docx    # Word 文档解析
-openpyxl       # Excel 解析
-rarfile        # RAR 解压（需要配合 WinRAR 或 unrar 工具）
+# 附件解析
+pypdf==5.5.0          # PDF 解析
+python-docx==1.0.2    # Word 文档解析
+openpyxl==3.2.0       # Excel 解析
+rarfile==4.2          # RAR 解压
+python-pptx==1.0.2    # PPT 解析
+
+# Crawler & Utilities
+beautifulsoup4==4.13.3
+requests==2.33.1
+httpx==0.30.0
+scrapling==0.4.2
+DrissionPage==4.1.1.2
+python-multipart==0.0.22
