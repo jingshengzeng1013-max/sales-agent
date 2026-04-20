@@ -18,13 +18,14 @@ if str(root_dir) not in sys.path:
     sys.path.append(str(root_dir))
 
 from src.config import DB_PATH, CUSTOMER_OUTPUT_DIR
+from src.utils.jsonl_helper import save_jsonl
 
 def generate_profiles(output_path=None):
     """
     从 tender_structured 表聚合数据并生成画像
     """
     if output_path is None:
-        output_path = CUSTOMER_OUTPUT_DIR / "customer_profiles.json"
+        output_path = CUSTOMER_OUTPUT_DIR / "customer_profiles.jsonl"
     
     print("=" * 60)
     print(f"正在生成客户画像...")
@@ -160,9 +161,8 @@ def generate_profiles(output_path=None):
         p['last_updated'] = datetime.now().strftime("%Y-%m-%d")
         final_profiles.append(p)
 
-    # 4. 写入 JSON
-    with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump(final_profiles, f, ensure_ascii=False, indent=2)
+    # 4. 写入 JSONL
+    save_jsonl(final_profiles, output_path)
 
     conn.close()
     print(f"[SUCCESS] 已生成 {len(final_profiles)} 个客户画像 -> {output_path}")

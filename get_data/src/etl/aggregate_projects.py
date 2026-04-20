@@ -1,8 +1,16 @@
 import json
 import os
 import re
+import sys
 from collections import defaultdict
 from datetime import datetime
+from pathlib import Path
+
+# 添加项目路径
+project_root = Path(__file__).resolve().parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+from src.utils.jsonl_helper import load_jsonl, save_jsonl
 
 def normalize_project_name(name):
     """
@@ -27,6 +35,11 @@ def normalize_project_name(name):
     return normalized.strip()
 
 def aggregate_projects(structured_file, detail_file, output_file):
+    # 统一后缀为 .jsonl
+    structured_file = str(structured_file).replace(".json", ".jsonl") if not str(structured_file).endswith(".jsonl") else str(structured_file)
+    detail_file = str(detail_file).replace(".json", ".jsonl") if not str(detail_file).endswith(".jsonl") else str(detail_file)
+    output_file = str(output_file).replace(".json", ".jsonl") if not str(output_file).endswith(".jsonl") else str(output_file)
+
     if not os.path.exists(structured_file):
         print(f"Error: {structured_file} not found.")
         return
@@ -34,14 +47,12 @@ def aggregate_projects(structured_file, detail_file, output_file):
     # 加载详情数据以获取日期
     url_to_date = {}
     if os.path.exists(detail_file):
-        with open(detail_file, 'r', encoding='utf-8') as f:
-            details = json.load(f)
-            for d in details:
-                if d.get('url') and d.get('publish_date'):
-                    url_to_date[d['url']] = d['publish_date']
+        details = load_jsonl(detail_file)
+        for d in details:
+            if d.get('url') and d.get('publish_date'):
+                url_to_date[d['url']] = d['publish_date']
 
-    with open(structured_file, 'r', encoding='utf-8') as f:
-        data = json.load(f)
+    data = load_jsonl(structured_file)
 
     # 按标准化项目名称和采购人分组
     project_groups = defaultdict(list)
@@ -146,13 +157,12 @@ def aggregate_projects(structured_file, detail_file, output_file):
         aggregated_projects.append(project_module)
 
     # 写入结果
-    with open(output_file, 'w', encoding='utf-8') as f:
-        json.dump(aggregated_projects, f, ensure_ascii=False, indent=2)
-    
-    print(f"Aggregated {len(aggregated_projects)} projects into {output_file}")
+    # 保存到 JSONL
+    save_jsonl(aggregated_projects, output_file)
+    print(f"Successfully aggregated {len(aggregated_projects)} projects into {output_file}")
 
 if __name__ == "__main__":
-    input_path = r"D:\sales_agent\get_data\data\output\etl\tenders_structured.json"
-    detail_path = r"D:\sales_agent\get_data\data\output\crawler\tenders_detail.json"
-    output_path = r"D:\sales_agent\get_data\data\output\etl\projects_aggregated.json"
+    input_path = r"D:\sales_agent\get_data\data\output\etl\tenders_structured.jsonl"
+    detail_path = r"D:\sales_agent\get_data\data\output\crawler\tenders_detail.jsonl"
+    output_path = r"D:\sales_agent\get_data\data\output\etl\projects_aggregated.jsonl"
     aggregate_projects(input_path, detail_path, output_path)

@@ -15,6 +15,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(BASE_DIR))
 
 from src.config import EMBEDDING_CONFIG, INDEX_DIR, TENDER_INDEX_DIR
+from src.utils.jsonl_helper import load_jsonl
 
 class IndexBuilder:
     def __init__(self):
@@ -23,15 +24,17 @@ class IndexBuilder:
 
     def build_index(self, data_path: str, index_save_dir: Path, index_name: str):
         """
-        根据 JSON 数据中的 embedding 构建 FAISS 索引
+        根据 JSONL 数据中的 embedding 构建 FAISS 索引
         """
+        # 统一后缀
+        data_path = str(data_path).replace(".json", ".jsonl") if not str(data_path).endswith(".jsonl") else str(data_path)
+        
         print(f"\n[INFO] 正在从 {data_path} 加载数据...")
         if not os.path.exists(data_path):
             print(f"[ERROR] 数据文件不存在: {data_path}")
             return
 
-        with open(data_path, 'r', encoding='utf-8') as f:
-            data_list = json.load(f)
+        data_list = load_jsonl(data_path)
 
         if not data_list:
             print("[WARNING] 数据列表为空，跳过构建。")
@@ -88,9 +91,9 @@ if __name__ == "__main__":
     builder = IndexBuilder()
     
     # 1. 构建产品索引
-    product_data = BASE_DIR / "data/embedding/product_embedded.json"
+    product_data = BASE_DIR / "data/embedding/product_embedded.jsonl"
     builder.build_index(str(product_data), INDEX_DIR, "product")
     
     # 2. 构建标讯索引
-    tender_data = BASE_DIR / "data/embedding/tenders_embedded.json"
+    tender_data = BASE_DIR / "data/embedding/tenders_embedded.jsonl"
     builder.build_index(str(tender_data), TENDER_INDEX_DIR, "tenders")

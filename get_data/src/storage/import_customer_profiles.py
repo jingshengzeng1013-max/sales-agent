@@ -16,6 +16,7 @@ if str(root_dir) not in sys.path:
     sys.path.append(str(root_dir))
 
 from src.config import DB_PATH, CUSTOMER_OUTPUT_DIR
+from src.utils.jsonl_helper import load_jsonl
 
 def init_profiles_table():
     """初始化客户画像表"""
@@ -48,25 +49,24 @@ def init_profiles_table():
     conn.close()
     print(f"[DB] 客户画像表初始化完成")
 
-def import_profiles(json_path=None):
+def import_profiles(jsonl_path=None):
     """
-    从 JSON 文件导入客户画像
+    从 JSONL 文件导入客户画像
     """
-    if json_path is None:
-        json_path = CUSTOMER_OUTPUT_DIR / "customer_profiles.json"
+    if jsonl_path is None:
+        jsonl_path = CUSTOMER_OUTPUT_DIR / "customer_profiles.jsonl"
     
-    if not os.path.exists(json_path):
-        print(f"[ERROR] JSON 文件不存在：{json_path}")
+    if not os.path.exists(jsonl_path):
+        print(f"[ERROR] JSONL 文件不存在：{jsonl_path}")
         return
 
     print("=" * 60)
-    print(f"正在导入客户画像: {json_path}")
+    print(f"正在导入客户画像: {jsonl_path}")
     print("=" * 60)
 
     init_profiles_table()
 
-    with open(json_path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
+    data = load_jsonl(str(jsonl_path))
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()

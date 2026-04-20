@@ -16,7 +16,7 @@ if str(root_dir) not in sys.path:
     sys.path.append(str(root_dir))
 
 from src.config import DB_PATH, CRAWLER_OUTPUT_DIR
-
+from src.utils.jsonl_helper import load_jsonl
 
 import uuid
 
@@ -60,24 +60,23 @@ def init_database():
     print(f"[DB] 数据库初始化完成：{DB_PATH}")
 
 
-def import_tenders_from_json(json_path=None):
+def import_tenders_from_jsonl(jsonl_path=None):
     """
-    从 JSON 文件导入招标列表数据到 tenders 表
+    从 JSONL 文件导入招标列表数据到 tenders 表
     """
-    if json_path is None:
-        json_path = CRAWLER_OUTPUT_DIR / "tenders_list.json"
+    if jsonl_path is None:
+        jsonl_path = CRAWLER_OUTPUT_DIR / "tenders_list.jsonl"
 
-    json_path = Path(json_path)
-    if not json_path.exists():
-        print(f"[ERROR] JSON 文件不存在：{json_path}")
+    jsonl_path = Path(jsonl_path)
+    if not jsonl_path.exists():
+        print(f"[ERROR] JSONL 文件不存在：{jsonl_path}")
         return {"success": False, "error": "文件不存在", "inserted": 0, "skipped": 0}
 
     print("=" * 60)
-    print(f"从 JSON 导入招标列表：{json_path}")
+    print(f"从 JSONL 导入招标列表：{jsonl_path}")
     print("=" * 60)
 
-    with open(json_path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
+    data = load_jsonl(str(jsonl_path))
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -119,24 +118,23 @@ def import_tenders_from_json(json_path=None):
     return {"success": True, "inserted": inserted, "skipped": skipped}
 
 
-def update_tender_details_from_json(json_path=None):
+def update_tender_details_from_jsonl(jsonl_path=None):
     """
-    从 JSON 文件更新招标详情数据到 tenders 表
+    从 JSONL 文件更新招标详情数据到 tenders 表
     """
-    if json_path is None:
-        json_path = CRAWLER_OUTPUT_DIR / "tenders_detail.json"
+    if jsonl_path is None:
+        jsonl_path = CRAWLER_OUTPUT_DIR / "tenders_detail.jsonl"
 
-    json_path = Path(json_path)
-    if not json_path.exists():
-        print(f"[ERROR] JSON 文件不存在：{json_path}")
+    jsonl_path = Path(jsonl_path)
+    if not jsonl_path.exists():
+        print(f"[ERROR] JSONL 文件不存在：{jsonl_path}")
         return {"success": False, "error": "文件不存在", "updated": 0}
 
     print("=" * 60)
-    print(f"从 JSON 更新招标详情：{json_path}")
+    print(f"从 JSONL 更新招标详情：{jsonl_path}")
     print("=" * 60)
 
-    with open(json_path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
+    data = load_jsonl(str(jsonl_path))
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -176,20 +174,20 @@ def update_tender_details_from_json(json_path=None):
     return {"success": True, "updated": updated}
 
 
-def import_attachments_from_json(json_path=None):
+def import_attachments_from_jsonl(jsonl_path=None):
     """
-    从 JSON 文件导入附件数据到 tender_attachments 表
+    从 JSONL 文件导入附件数据到 tender_attachments 表
     """
-    if json_path is None:
-        json_path = CRAWLER_OUTPUT_DIR / "tenders_attachments.json"
+    if jsonl_path is None:
+        jsonl_path = CRAWLER_OUTPUT_DIR / "tenders_attachments.jsonl"
 
-    json_path = Path(json_path)
-    if not json_path.exists():
-        print(f"[ERROR] JSON 文件不存在：{json_path}")
+    jsonl_path = Path(jsonl_path)
+    if not jsonl_path.exists():
+        print(f"[ERROR] JSONL 文件不存在：{jsonl_path}")
         return {"success": False, "error": "文件不存在", "inserted": 0, "skipped": 0}
 
     print("=" * 60)
-    print(f"从 JSON 导入附件：{json_path}")
+    print(f"从 JSONL 导入附件：{jsonl_path}")
     print("=" * 60)
 
     conn = sqlite3.connect(DB_PATH)
@@ -224,8 +222,7 @@ def import_attachments_from_json(json_path=None):
     cursor.execute("SELECT download_url FROM tender_attachments")
     existing = {row[0] for row in cursor.fetchall()}
 
-    with open(json_path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
+    data = load_jsonl(str(jsonl_path))
 
     inserted = 0
     skipped = 0
@@ -281,13 +278,13 @@ def import_all():
     init_database()
 
     # 导入招标列表
-    result_list = import_tenders_from_json()
+    result_list = import_tenders_from_jsonl()
 
     # 更新招标详情
-    result_detail = update_tender_details_from_json()
+    result_detail = update_tender_details_from_jsonl()
 
     # 导入附件
-    result_attachment = import_attachments_from_json()
+    result_attachment = import_attachments_from_jsonl()
 
     print("\n" + "=" * 60)
     print("导入完成")
@@ -307,9 +304,9 @@ def import_all():
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="导入招标数据到数据库")
-    parser.add_argument("--list", action="store_true", help="导入招标列表 (tenders_list.json)")
-    parser.add_argument("--detail", action="store_true", help="更新招标详情 (tenders_detail.json)")
-    parser.add_argument("--attachments", action="store_true", help="导入附件 (tenders_attachments.json)")
+    parser.add_argument("--list", action="store_true", help="导入招标列表 (tenders_list.jsonl)")
+    parser.add_argument("--detail", action="store_true", help="更新招标详情 (tenders_detail.jsonl)")
+    parser.add_argument("--attachments", action="store_true", help="导入附件 (tenders_attachments.jsonl)")
     parser.add_argument("--all", action="store_true", help="导入所有数据 (列表+详情+附件)")
     
     args = parser.parse_args()
@@ -318,8 +315,8 @@ if __name__ == "__main__":
         import_all()
     else:
         if args.list:
-            import_tenders_from_json()
+            import_tenders_from_jsonl()
         if args.detail:
-            update_tender_details_from_json()
+            update_tender_details_from_jsonl()
         if args.attachments:
-            import_attachments_from_json()
+            import_attachments_from_jsonl()

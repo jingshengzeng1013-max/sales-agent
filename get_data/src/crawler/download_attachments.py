@@ -17,6 +17,7 @@ from urllib.parse import unquote
 # 添加项目路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import DB_PATH, ATTACHMENT_DIR
+from src.utils.jsonl_helper import load_jsonl
 
 # 尝试导入 curl_cffi.requests，如果不存在则使用 requests
 try:
@@ -146,16 +147,15 @@ def load_attachments_from_db():
     return attachments
 
 
-def load_attachments_from_json(json_path):
-    """从 JSON 文件加载附件列表"""
-    if not os.path.exists(json_path):
-        print(f"[ERROR] JSON 文件不存在：{json_path}")
+def load_attachments_from_jsonl(jsonl_path):
+    """从 JSONL 文件加载附件列表"""
+    if not os.path.exists(jsonl_path):
+        print(f"[ERROR] JSONL 文件不存在：{jsonl_path}")
         return []
 
-    with open(json_path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
+    data = load_jsonl(str(jsonl_path))
 
-    print(f"[INFO] 从 JSON 加载 {len(data)} 条附件")
+    print(f"[INFO] 从 JSONL 加载 {len(data)} 条附件")
     return data
 
 
@@ -169,11 +169,11 @@ def check_downloaded(save_path):
     return False
 
 
-def download_all_attachments(json_path=None, use_db=True):
+def download_all_attachments(jsonl_path=None, use_db=True):
     """批量下载所有附件"""
     # 加载附件列表
-    if json_path:
-        attachments = load_attachments_from_json(json_path)
+    if jsonl_path:
+        attachments = load_attachments_from_jsonl(jsonl_path)
     elif use_db:
         attachments = load_attachments_from_db()
     else:
@@ -279,16 +279,16 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description='下载招标公告附件')
-    parser.add_argument('--json', type=str, help='JSON 文件路径')
+    parser.add_argument('--jsonl', type=str, help='JSONL 文件路径')
     parser.add_argument('--db', action='store_true', help='从数据库加载（默认）')
     parser.add_argument('--no-db', action='store_true', help='不从数据库加载')
 
     args = parser.parse_args()
 
-    use_db = args.db or (not args.json and not args.no_db)
+    use_db = args.db or (not args.jsonl and not args.no_db)
 
     download_all_attachments(
-        json_path=args.json,
+        jsonl_path=args.jsonl,
         use_db=use_db
     )
 

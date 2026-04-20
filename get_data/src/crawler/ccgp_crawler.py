@@ -19,6 +19,8 @@ from tqdm import tqdm
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import CRAWLER_CONFIG, CRAWLER_OUTPUT_DIR
 from crawler.crawl_detail import _canonical_detail_url
+from crawler.proxy_manager import proxy_manager
+from utils.jsonl_helper import load_jsonl, save_jsonl
 
 # 输出目录
 OUTPUT_DIR = CRAWLER_OUTPUT_DIR
@@ -65,22 +67,47 @@ def random_delay():
 
 
 def fetch_page(url):
-    """使用 curl_cffi 获取完整页面"""
+    """使用 curl_cffi 获取完整页面，支持自动代理刷新"""
     print(f"\n[FETCH] {url}")
 
-    try:
-        r = requests_cffi.get(url, impersonate="chrome124", timeout=CONFIG["timeout"])
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            # 获取当前可用代理（ProxyManager 会根据 1 分钟 TTL 自动刷新）
+            # 如果是重试，强制刷新代理
+            proxies = proxy_manager.get_proxy(force_refresh=(attempt > 0))
+            
+            # 降低超时时间，防止死等失效代理
+            r = requests_cffi.get(
+                url, 
+                impersonate="chrome124", 
+                timeout=10,  # 列表页 10秒足够，防止卡死
+                proxies=proxies
+            )
 
-        if r.status_code == 200:
-            print(f"  [OK] Status: {r.status_code}, Length: {len(r.text)}")
-            return r.text
-        else:
-            print(f"  [FAIL] Status: {r.status_code}")
-            return None
+            if r.status_code == 200:
+                # 检查是否被封禁
+                if "频繁访问" in r.text or "请稍后再试" in r.text:
+                    print(f"  [BLOCKED] Detected block message, forcing proxy refresh... (Attempt {attempt+1}/{max_retries})")
+                    continue
+                    
+                print(f"  [OK] Status: {r.status_code}, Length: {len(r.text)}")
+                return r.text
+            elif r.status_code in [403, 429]:
+                print(f"  [FAIL] Status: {r.status_code}, forcing proxy refresh...")
+                continue
+            else:
+                print(f"  [FAIL] Status: {r.status_code}")
+                return None
 
-    except Exception as e:
-        print(f"  [ERROR] {e}")
-        return None
+        except Exception as e:
+            print(f"  [ERROR] {str(e)[:100]}")
+            if attempt < max_retries - 1:
+                print(f"  [RETRY] Retrying with new proxy...")
+            else:
+                return None
+    
+    return None
 
 
 def build_search_url(page=1):
@@ -164,33 +191,14 @@ def parse_list_page(html):
     return items
 
 
-def load_existing_json(json_path):
-    """加载已有的 JSON 数据，用于去重。空文件、损坏 JSON 时返回 [] 并提示，避免爬取收尾崩溃。"""
-    if not os.path.exists(json_path):
-        return []
-    try:
-        with open(json_path, "r", encoding="utf-8") as f:
-            raw = f.read()
-    except OSError as e:
-        print(f"[WARN] 无法读取 {json_path}：{e}，按空列表处理")
-        return []
-    if not raw.strip():
-        print(f"[WARN] {json_path} 为空，按空列表处理")
-        return []
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError as e:
-        print(f"[WARN] {json_path} 不是合法 JSON（{e}），按空列表处理；将用本批结果重写文件")
-        return []
-    if isinstance(data, list):
-        return data
-    print(f"[WARN] {json_path} 根节点不是数组（类型 {type(data).__name__}），按空列表处理")
-    return []
+def load_existing_jsonl(jsonl_path):
+    """加载已有的 JSONL 数据，用于去重。"""
+    return load_jsonl(str(jsonl_path))
 
 
-def save_to_json(results, json_path):
-    """保存数据到 JSON 文件；与详情爬取一致，按 canonical detail_url 去重。"""
-    existing = load_existing_json(json_path)
+def save_to_jsonl(results, jsonl_path):
+    """保存数据到 JSONL 文件；与详情爬取一致，按 canonical detail_url 去重。"""
+    existing = load_existing_jsonl(jsonl_path)
     existing_urls: set[str] = set()
     for item in existing:
         u = _canonical_detail_url(item.get("detail_url"))
@@ -200,6 +208,7 @@ def save_to_json(results, json_path):
     new_count = 0
     skipped_dup = 0
     skipped_no_url = 0
+    new_items = []
     for item in results:
         u = _canonical_detail_url(item.get("detail_url"))
         if not u:
@@ -209,17 +218,17 @@ def save_to_json(results, json_path):
             skipped_dup += 1
             continue
         existing_urls.add(u)
-        existing.append(item)
+        new_items.append(item)
         new_count += 1
 
-    with open(json_path, 'w', encoding='utf-8') as f:
-        json.dump(existing, f, indent=2, ensure_ascii=False)
+    if new_items:
+        save_jsonl(new_items, str(jsonl_path), append=True)
 
     print(
-        f"[JSON] 新增 {new_count} 条，共 {len(existing)} 条（唯一 URL）；"
+        f"[JSONL] 新增 {new_count} 条，共 {len(existing) + new_count} 条（唯一 URL）；"
         f"本批重复/已存在 {skipped_dup}；无有效 URL {skipped_no_url}"
     )
-    print(f"[JSON] 已保存到：{json_path}")
+    print(f"[JSONL] 已保存到：{jsonl_path}")
     return new_count
 
 
@@ -292,7 +301,7 @@ def run_crawl_list(max_pages=3):
         f"end_time={_et}"
     )
 
-    json_path = OUTPUT_DIR / "tenders_list.json"
+    jsonl_path = OUTPUT_DIR / "tenders_list.jsonl"
 
     all_results = []
     prev_fingerprint: tuple[str, ...] | None = None
@@ -300,11 +309,11 @@ def run_crawl_list(max_pages=3):
     total_new_items = 0
 
     def persist_page(page_num: int, results: list) -> None:
-        """每页成功后立即合并写入 tenders_list.json（断点可续、不丢本页）。"""
+        """每页成功后立即合并写入 tenders_list.jsonl（断点可续、不丢本页）。"""
         nonlocal total_new_items
-        n = save_to_json(results, json_path)
+        n = save_to_jsonl(results, jsonl_path)
         total_new_items += n
-        print(f"[LIST] 第 {page_num} 页已写入 {json_path.name}（本页合并新增 {n} 条）")
+        print(f"[LIST] 第 {page_num} 页已写入 {jsonl_path.name}（本页合并新增 {n} 条）")
 
     if max_pages <= 0:
         page = START_PAGE
@@ -352,7 +361,7 @@ def run_crawl_list(max_pages=3):
     print(f"爬取完成!")
     print(f"爬取条数：{len(all_results)}")
     print(f"新增条数（本 run 累计）：{total_new_items}")
-    print(f"JSON 文件：{json_path}")
+    print(f"JSONL 文件：{jsonl_path}")
     print("="*60)
 
     return {
@@ -360,7 +369,7 @@ def run_crawl_list(max_pages=3):
         "pages_crawled": pages_fetched,
         "items_crawled": len(all_results),
         "new_items": total_new_items,
-        "json_path": str(json_path),
+        "json_path": str(jsonl_path),
     }
 
 
@@ -368,8 +377,9 @@ def main():
     """主函数"""
     import argparse
 
+    default_pages = int(CRAWLER_CONFIG.get("max_pages", 3))
     parser = argparse.ArgumentParser(description='中国政府采购网招标爬虫')
-    parser.add_argument('--pages', type=int, default=3, help='爬取页数，0=爬取所有')
+    parser.add_argument('--pages', type=int, default=default_pages, help=f'爬取页数，0=爬取所有 (默认: {default_pages})')
 
     args = parser.parse_args()
 

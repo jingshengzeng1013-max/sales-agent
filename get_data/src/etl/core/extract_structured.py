@@ -33,6 +33,7 @@ from config import (
 )
 from utils.logger import setup_logger
 from crawler.crawl_detail import _canonical_detail_url
+from utils.jsonl_helper import load_jsonl, save_jsonl, save_jsonl_single
 
 
 def _extract_llm_provider() -> str:
@@ -417,43 +418,11 @@ def extract_batch(
     if suffix:
         json_path = os.path.join(OUTPUT_DIR, f"tenders_structured_{suffix}.json")
     else:
-        json_path = os.path.join(OUTPUT_DIR, "tenders_structured.json")
+        jsonl_path = os.path.join(OUTPUT_DIR, "tenders_structured.jsonl")
     
-    # 增量保存的临时文件 (JSONL 格式)
-    jsonl_path = json_path + "l"
-
-    # 如果文件已存在，先读取已有数据（空文件或损坏 JSON 时从头开始）
-    results = []
-    existing_ids = set()
-
-    # 1. 加载已完成的 JSON 文件
-    if os.path.exists(json_path):
-        try:
-            with open(json_path, "r", encoding="utf-8") as f:
-                raw = f.read().strip()
-            if raw:
-                results = json.loads(raw)
-                if not isinstance(results, list):
-                    raise ValueError(f"期望 JSON 数组，得到 {type(results).__name__}")
-                results, merge_dropped = _dedupe_structured_results(results)
-                if merge_dropped:
-                    logger.warning(f"已有数据中存在 {merge_dropped} 条重复，已合并")
-        except Exception as e:
-            logger.warning(f"读取已有 JSON 失败（{e}）")
-            results = []
-
-    # 2. 加载可能存在的临时 JSONL 文件 (断点续传)
-    if os.path.exists(jsonl_path):
-        try:
-            with open(jsonl_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    if line.strip():
-                        item = json.loads(line)
-                        results.append(item)
-            results, _ = _dedupe_structured_results(results)
-            logger.info(f"从临时文件加载了记录，当前共 {len(results)} 条")
-        except Exception as e:
-            logger.warning(f"读取临时 JSONL 失败（{e}）")
+    # 直接加载 JSONL
+    results = load_jsonl(jsonl_path)
+    logger.info(f"已加载 {len(results)} 条现有结构化结果")
 
     if retry:
         original_count = len(results)
@@ -560,12 +529,8 @@ def extract_batch(
 
         with results_lock:
             results.append(data)
-            # 增量保存到临时 JSONL 文件
-            try:
-                with open(jsonl_path, 'a', encoding='utf-8') as f:
-                    f.write(json.dumps(data, ensure_ascii=False) + "\n")
-            except Exception as e:
-                logger.error(f"增量保存 JSONL 失败: {e}")
+            # 增量保存到 JSONL 文件
+            save_jsonl_single(data, jsonl_path)
 
         with stats_lock:
             progress.update(1)
@@ -581,22 +546,15 @@ def extract_batch(
 
     progress.close()
 
-    # 任务完成后，将临时 JSONL 合并到正式 JSON 文件中
+    # 任务完成后，再次去重并保存最终结果
     if success > 0 or skipped > 0:
         with results_lock:
             try:
-                # 再次去重，确保最终文件干净
                 final_results, _ = _dedupe_structured_results(results)
-                with open(json_path, 'w', encoding='utf-8') as f:
-                    json.dump(final_results, f, indent=2, ensure_ascii=False)
-                logger.info(f"最终结果已合并保存至：{json_path}")
-                
-                # 合并成功后删除临时文件
-                if os.path.exists(jsonl_path):
-                    os.remove(jsonl_path)
-                    logger.info("已清理临时文件")
+                save_jsonl(final_results, jsonl_path)
+                logger.info(f"最终结果已保存至：{jsonl_path}")
             except Exception as e:
-                logger.error(f"合并最终 JSON 失败: {e}")
+                logger.error(f"保存最终 JSONL 失败: {e}")
 
     logger.info(f"抽取完成：success={success}, skipped={skipped}, llm_success={llm_success}")
 
@@ -604,7 +562,7 @@ def extract_batch(
     summary = token_counter.get_summary()
     logger.info(f"Token 统计：{summary}")
 
-    logger.info(f"JSON 文件已保存：{json_path}")
+    logger.info(f"JSONL 文件已保存：{jsonl_path}")
     logger.info(f"=" * 60)
 
     print("="*60)
@@ -624,9 +582,9 @@ def extract_batch(
         None,
     )
     print(f"[日志] 已保存到：{_log_file or '（仅控制台）'}")
-    print(f"[JSON] 已保存到：{json_path}")
+    print(f"[JSONL] 已保存到：{jsonl_path}")
 
-    return json_path
+    return jsonl_path
 
 
 def main():

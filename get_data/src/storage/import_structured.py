@@ -16,6 +16,7 @@ if str(root_dir) not in sys.path:
     sys.path.append(str(root_dir))
 
 from src.config import DB_PATH
+from src.utils.jsonl_helper import load_jsonl
 
 import uuid
 
@@ -124,23 +125,22 @@ def init_structured_table():
     conn.close()
     print(f"[DB] 结构化数据表初始化完成")
 
-def import_structured_tenders(json_path: str, mode: str = 'append'):
+def import_structured_tenders(jsonl_path: str, mode: str = 'append'):
     """
-    从 JSON 文件导入结构化标讯数据
+    从 JSONL 文件导入结构化标讯数据
     """
-    if not os.path.exists(json_path):
-        print(f"[ERROR] JSON 文件不存在：{json_path}")
+    if not os.path.exists(jsonl_path):
+        print(f"[ERROR] JSONL 文件不存在：{jsonl_path}")
         return {"success": False, "error": "文件不存在"}
 
     print("=" * 60)
-    print(f"正在导入结构化数据: {json_path} (模式: {mode})")
+    print(f"正在导入结构化数据: {jsonl_path} (模式: {mode})")
     print("=" * 60)
 
     # 确保表已创建并包含所有列
     init_structured_table()
 
-    with open(json_path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
+    data = load_jsonl(jsonl_path)
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
