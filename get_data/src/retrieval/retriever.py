@@ -132,7 +132,8 @@ class DualRetriever:
                       province: str = None, notice_type: str = None,
                       aggregate_by_project: bool = True,
                       exclude_won: bool = False,
-                      sort_by: str = "score") -> List[Dict]:
+                      sort_by: str = "score",
+                      client_value_weight: float = 0.0) -> List[Dict]:
         """
         双路检索 + RRF (Reciprocal Rank Fusion) 融合
         :param vector_weight: 向量检索权重 (0-1)
@@ -142,6 +143,7 @@ class DualRetriever:
         :param aggregate_by_project: 是否按项目汇总显示
         :param exclude_won: 是否排除已中标项目
         :param sort_by: 排序方式 ("score" 或 "date")
+        :param client_value_weight: 客户价值权重 (0-1)，基于客户历史平均分进行加权
         """
         # 1. 向量检索
         if query_vector is None:
@@ -274,13 +276,34 @@ class DualRetriever:
                     avg_bm25 = sum(info["bm25_scores"]) / len(info["bm25_scores"])
                     avg_bm25_norm = sum(info["bm25_norm_scores"]) / len(info["bm25_norm_scores"])
                     
+                    # 客户价值加权逻辑
+                    client_boost = 1.0
+                    if client_value_weight > 0:
+                        # 从统一画像格式获取客户评分
+                        profile = info["project_data"].get("buyer_profile_summary")
+                        if profile and profile.get("avg_score"):
+                            # 旧格式兼容
+                            avg_score = profile["avg_score"]
+                        else:
+                            # 尝试从画像数据的 value_profile 获取
+                            buyer_name = info["project_data"].get("buyer_name_std", "")
+                            # 这里直接用项目自身的评分作为客户评分
+                            avg_score = info["project_data"].get("opportunity_score", 0)
+
+                        if avg_score:
+                            # 将 0-100 的 avg_score 映射为 0.8 - 1.2 的系数
+                            # 如果 avg_score=100, boost=1.2; 如果 avg_score=0, boost=0.8
+                            boost_val = 0.8 + (avg_score / 100.0) * 0.4
+                            client_boost = 1.0 + (boost_val - 1.0) * client_value_weight
+                    
                     final_project_results.append({
                         "id": proj_key,
-                        "score": round(avg_rrf * 1000, 4),
-                        "rrf_raw_score": round(avg_rrf, 6),
+                        "score": round(avg_rrf * 1000 * client_boost, 4),
+                        "rrf_raw_score": round(avg_rrf * client_boost, 6),
                         "vector_score": round(avg_vector, 4),
                         "bm25_score": round(avg_bm25, 2),
                         "bm25_norm_score": round(avg_bm25_norm, 4),
+                        "client_boost": round(client_boost, 4),
                         "data": info["project_data"],
                         "is_aggregated": True,
                         "match_count": len(info["rrf_scores"]),

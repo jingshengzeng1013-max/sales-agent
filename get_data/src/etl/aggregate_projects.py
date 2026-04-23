@@ -34,11 +34,13 @@ def normalize_project_name(name):
     
     return normalized.strip()
 
-def aggregate_projects(structured_file, detail_file, output_file):
+def aggregate_projects(structured_file, detail_file, output_file, profile_file=None):
     # 统一后缀为 .jsonl
     structured_file = str(structured_file).replace(".json", ".jsonl") if not str(structured_file).endswith(".jsonl") else str(structured_file)
     detail_file = str(detail_file).replace(".json", ".jsonl") if not str(detail_file).endswith(".jsonl") else str(detail_file)
     output_file = str(output_file).replace(".json", ".jsonl") if not str(output_file).endswith(".jsonl") else str(output_file)
+    if profile_file:
+        profile_file = str(profile_file).replace(".json", ".jsonl") if not str(profile_file).endswith(".jsonl") else str(profile_file)
 
     if not os.path.exists(structured_file):
         print(f"Error: {structured_file} not found.")
@@ -51,6 +53,22 @@ def aggregate_projects(structured_file, detail_file, output_file):
         for d in details:
             if d.get('url') and d.get('publish_date'):
                 url_to_date[d['url']] = d['publish_date']
+
+    # 加载客户画像数据
+    buyer_profiles = {}
+    if profile_file and os.path.exists(profile_file):
+        profiles = load_jsonl(profile_file)
+        for p in profiles:
+            name = p.get('customer_name')
+            if name:
+                # 提取摘要信息
+                buyer_profiles[name] = {
+                    "tender_count": p.get('value_profile', {}).get('tender_count', 0),
+                    "avg_score": p.get('value_profile', {}).get('avg_opportunity_score', 0),
+                    "past_winners": p.get('competitive_landscape', {}).get('past_winners', []),
+                    "last_updated": p.get('last_updated')
+                }
+        print(f"[INFO] 已加载 {len(buyer_profiles)} 个客户画像摘要")
 
     data = load_jsonl(structured_file)
 
@@ -99,7 +117,9 @@ def aggregate_projects(structured_file, detail_file, output_file):
             "opportunity_reason": base_item.get('opportunity_reason'),
             "contact_person": base_item.get('contact_person'),
             "contact_phone": base_item.get('contact_phone'),
-            "product_keywords": base_item.get('product_keywords', [])
+            "product_keywords": base_item.get('product_keywords', []),
+            # 注入客户画像摘要
+            "buyer_profile_summary": buyer_profiles.get(buyer)
         }
 
         # 处理所有关联公告
@@ -165,4 +185,5 @@ if __name__ == "__main__":
     input_path = r"D:\sales_agent\get_data\data\output\etl\tenders_structured.jsonl"
     detail_path = r"D:\sales_agent\get_data\data\output\crawler\tenders_detail.jsonl"
     output_path = r"D:\sales_agent\get_data\data\output\etl\projects_aggregated.jsonl"
-    aggregate_projects(input_path, detail_path, output_path)
+    profile_path = r"D:\sales_agent\get_data\data\output\customer\customer_profiles.jsonl"
+    aggregate_projects(input_path, detail_path, output_path, profile_path)
