@@ -1,92 +1,112 @@
-# sales_agent
+# Sales Agent
 
+> 政府采购招投标数据智能销售助手 — 基于 Agentic RAG 架构的招标情报系统
 
+---
 
-## Getting started
+## 项目简介
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+Sales Agent 是一款面向销售团队的智能招标情报系统，自动化采集中国政府采购网数据，融合向量检索与关键词检索技术，帮助团队快速发现高价值项目机会。
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+**核心能力**：数据爬取 → AI 结构化提取 → 项目生命周期聚合 → 双路混合检索 → 销售建议生成
 
-## Add your files
+---
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
+## 核心架构
+
+### 技术栈
+
+| 层级 | 技术 |
+|------|------|
+| 数据采集 | Python 爬虫 + 代理池 |
+| 数据处理 | DeepSeek LLM 结构化抽取 |
+| 向量数据库 | FAISS + BM25 混合检索 |
+| 后端服务 | FastAPI |
+| 前端 | Tailwind CSS + Vanilla JS |
+
+### 项目模块
 
 ```
-cd existing_repo
-git remote add origin http://10.173.1.15/qukaizhi/sales_agent.git
-git branch -M main
-git push -uf origin main
+sales_agent/
+├── get_data/               # 数据采集与处理核心模块
+│   ├── src/
+│   │   ├── crawler/        # 爬虫模块
+│   │   ├── etl/            # 数据清洗与项目聚合
+│   │   ├── retrieval/      # 双路检索器 (FAISS + BM25)
+│   │   ├── vectorization/  # 向量化与索引构建
+│   │   ├── analysis/       # AI 销售建议与客户画像
+│   │   └── storage/        # 数据存储
+│   └── webapp/             # Web 服务与前端
+├── docs/                   # 项目文档
+└── README.md              # 本文件
 ```
 
-## Integrate with your tools
+---
 
-- [ ] [Set up project integrations](http://10.173.1.15/qukaizhi/sales_agent/-/settings/integrations)
+## 快速开始
 
-## Collaborate with your team
+### 1. 安装依赖
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Automatically merge when pipeline succeeds](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
+```bash
+cd get_data
+pip install -r requirements.txt
+```
 
-## Test and Deploy
+### 2. 初始化与数据采集
 
-Use the built-in continuous integration in GitLab.
+```bash
+# 重置数据库
+python src/utils/reset_db.py
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing(SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+# 采集数据
+python src/crawler/ccgp_crawler.py
+python src/crawler/crawl_detail.py
 
-***
+# AI 结构化抽取
+python src/etl/core/extract_structured.py --all
 
-# Editing this README
+# 项目聚合
+python src/etl/aggregate_projects.py
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thank you to [makeareadme.com](https://www.makeareadme.com/) for this template.
+# 构建索引
+python src/vectorization/vectorize_data.py
+python src/vectorization/build_index.py
+```
 
-## Suggestions for a good README
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+### 3. 启动服务
 
-## Name
-Choose a self-explaining name for your project.
+```bash
+python webapp/server_fastapi.py
+```
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+访问地址：
+- 本地：`http://127.0.0.1:8103/static/demo.html`
+- 局域网：`http://[你的IP]:8103/static/demo.html`
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+---
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+## 核心功能
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+### 项目生命周期全追踪
+自动聚合同一项目的招标公告、中标公告、更正公告、终止公告，实时显示项目状态与时间轴。
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+### 双路混合检索
+- **向量检索 (FAISS)**：语义理解搜索
+- **关键词检索 (BM25)**：精确匹配
+- **RRF 融合**：智能合并结果
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+### AI 销售建议
+基于客户历史数据与项目特征，LLM 自动生成个性化销售建议与报价策略。
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+---
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+## 文档
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+- [数据采集说明](get_data/src/crawler/README.md)
+- [ETL 处理说明](get_data/src/etl/README.md)
+- [检索模块说明](get_data/src/retrieval/README.md)
+- [Web 服务说明](get_data/webapp/README.md)
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+---
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+*Last Updated: 2026-04-21*
