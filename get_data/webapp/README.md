@@ -1,77 +1,167 @@
-# Web 控制台 (Web UI) 说明文档
+# Web 应用模块 (Webapp)
 
-`webapp/` 目录包含了基于 FastAPI 框架开发的可视化控制台，用于通过浏览器直接交互和管理整个数据采集、处理、检索和销售情报的流程。
+> 基于 FastAPI 框架构建的销售情报系统 Web 服务，提供招标检索、客户画像、AI 销售建议等核心功能。
 
-## 1. 目录结构与架构
+## 目录结构
 
-随着功能的增加，Web UI 的代码已经进行了模块化拆分，以保证可维护性：
-
-```text
+```
 webapp/
-├── server.py           # FastAPI 主入口：负责初始化应用、加载中间件、挂载路由和静态文件。
-├── utils.py            # 通用工具库：包含流式输出、端口清理、本地 IP 获取、数据转换等辅助函数。
-├── router/             # API 路由目录（按业务模块拆分）：
-│   ├── system.py       # 系统状态相关的 API（暂无复杂逻辑，预留）
-│   ├── db.py           # 数据库（SQLite）在线查看与数据加载的 API
-│   ├── crawl.py        # 爬虫控制台的 API（流式运行采集任务）
-│   ├── extract.py      # LLM 结构化抽取控制台的 API（流式运行大模型抽取）
-│   ├── intel.py        # 招标下拉数据源（GET /tender-options，供混合检索等共用）
-│   ├── retrieval.py    # 混合检索（产品搜索、招标库搜索）的 API
-│   └── output.py       # 输出文件（如提取的 JSON、生成的报告）列表管理的 API
-└── static/             # 纯前端静态资源：
-    ├── index.html      # 主页面 HTML 结构（多页签单页应用）
-    ├── app.js          # 前端交互逻辑（AJAX 请求、SSE 流式接收、DOM 渲染）
-    └── styles.css      # 页面样式与主题
+├── server_fastapi.py   # FastAPI 后端主服务（当前使用）
+├── server.py            # 旧版服务（保留兼容）
+├── utils.py             # 工具函数
+├── router/             # API 路由模块
+│   ├── db.py           # 数据库操作
+│   ├── crawl.py        # 爬虫控制
+│   ├── extract.py      # LLM 抽取
+│   ├── intel.py        # 招标下拉数据
+│   ├── retrieval.py    # 混合检索
+│   └── output.py       # 输出文件管理
+└── static/             # 前端静态资源
+    ├── index.html      # 完整版页面
+    ├── demo.html       # 演示版页面（推荐）
+    └── css/            # 样式文件
 ```
 
-## 2. 核心功能模块
+## 快速启动
 
-Web UI 在前端页面上分为几个主要的 Tab 页签：
-
-### 2.1 数据库浏览 (DB Viewer)
-- **功能**：直接在浏览器中查看 `data/ccgp_data.db`（或其他配置的 SQLite 数据库）中的表和数据。
-- **特点**：支持分页加载，自动识别二进制数据，处理长文本显示。
-
-### 2.2 爬虫任务 (Crawler)
-- **功能**：一键运行爬虫流程（列表抓取 -> 详情抓取），可配置关键字、最大页数、延迟等参数。
-- **特点**：通过 Server-Sent Events (SSE) 实时在网页端打印后台爬虫的日志输出。
-
-### 2.3 结构化抽取 (Extractor)
-- **功能**：调用配置的 LLM（如 DeepSeek 等）对爬取到的原始招标正文进行结构化（提取预算、需求、应用场景等）。
-- **特点**：支持多模型切换，支持全量或限量抽取，同样通过 SSE 实时展示抽取进度。
-
-### 2.4 混合检索 (Hybrid Search)
-这是目前最复杂的模块之一，分为**两套独立的检索库**：
-1. **按招标搜产品**：
-   - 输入招标需求文本（或直接选择数据库中的某条招标记录 ID），系统会在**产品知识库**（`data/products.json` 生成的索引）中寻找最匹配的自研产品。
-2. **按产品搜招标**：
-   - 输入产品描述（或直接选择系统内已有的产品 ID），系统会在**已结构化的招标库**（`data/index_tenders/`）中寻找最匹配的招标商机。
-- **技术栈**：底层使用 FAISS（向量检索） + BM25（关键词检索） 的双路召回机制，再通过 RRF 算法融合排序。
-
-### 2.5 销售情报 (Sales Intel)
-- **页面**：全流程说明与「历史快照对比」（可选）；完整流水线请在项目根目录运行 `python src/sales_intel_flow.py` 等脚本。
-- **API**：`GET /api/intel/tender-options` 仍为混合检索页「从库选招标」提供下拉数据。
-
-## 3. 启动与配置
-
-### 3.1 启动服务
-在 `get_data` 根目录下运行：
 ```bash
-python webapp/server.py
+cd get_data
+
+# 启动后端服务
+python webapp/server_fastapi.py
+
+# 服务启动后访问
+# 本地：http://127.0.0.1:8103/static/demo.html
+# 局域网：http://<你的IP>:8103/static/demo.html
 ```
-服务启动时会自动：
-1. **清理端口**：如果 `8103` 端口被之前崩溃的进程占用，会自动 `kill` 掉旧进程。
-2. **预热模型**：自动加载本地的向量嵌入模型（如 `Qwen3-Embedding`）和 FAISS 索引文件到内存中，避免首次搜索时卡顿。
-3. **打印地址**：自动识别并打印可以通过局域网访问的 URL（如 `http://192.168.x.x:8103`）。
 
-### 3.2 环境变量
-可以在 `.env` 文件或运行环境中设置：
-- `GET_DATA_WEB_HOST`: 监听地址，默认 `0.0.0.0`
-- `GET_DATA_WEB_PORT`: 监听端口，默认 `8103`
-- `GET_DATA_WEB_SKIP_WARMUP`: 设为 `1` 可跳过启动时的检索模型预热，加快启动速度。
-- `GET_DATA_WEB_LOG_LEVEL`: Web 服务日志级别，默认 `INFO`。
+## 核心 API 接口
 
-## 4. 前端开发须知
-- **API 通信**：前端主要使用 `fetch` 调用 `/api/` 开头的 RESTful 接口。
-- **流式输出**：对于耗时较长的任务（爬虫、大模型抽取等），后端返回 `text/event-stream`，前端通过 `app.js` 中的 `consumeSsePost` 函数解析流式事件（如 `type: "log"`, `type: "done"`），实现打字机效果或实时日志刷新。
-- **UI 组件**：前端没有使用庞大的框架（如 Vue/React），完全使用原生 JavaScript (Vanilla JS) 操作 DOM，保持轻量和快速加载。
+### 1. 招标检索 (`/api/retrieval/*`)
+
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/api/retrieval/search-tenders` | POST | 按产品检索招标库（核心接口） |
+| `/api/retrieval/filter-options` | GET | 获取省份、公告类型筛选选项 |
+| `/api/retrieval/product-options` | GET | 获取产品列表 |
+
+**检索请求参数**：
+
+```json
+{
+    "product_id": "prod_001",
+    "top_k": 20,
+    "min_score": 0.0,
+    "use_vector": true,
+    "use_bm25": true,
+    "vector_weight": 0.5,
+    "bm25_weight": 0.5,
+    "province": "北京",
+    "notice_type": "招标公告",
+    "exclude_won": false,
+    "sort_by": "score",
+    "client_value_weight": 0.0
+}
+```
+
+### 2. 客户画像 (`/api/customer/*`)
+
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/api/customer/profile/{name}` | GET | 获取客户画像详情 |
+
+### 3. AI 销售建议 (`/api/analysis/*`)
+
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/api/analysis/sales-suggestions` | POST | 获取 AI 生成的销售建议 |
+
+**请求示例**：
+
+```json
+{
+    "project_data": {
+        "project_name_std": "智慧校园三期",
+        "buyer_name": "某省重点大学",
+        "total_budget": 5000000,
+        "content_summary": "采购智慧黑板、录播系统等"
+    },
+    "customer_name": "某省重点大学"
+}
+```
+
+### 4. 数据库浏览 (`/api/db/*`)
+
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/api/db/tables` | GET | 获取数据库表列表 |
+| `/api/db/table/{table_name}` | GET | 查询指定表数据 |
+
+## 前端页面
+
+### Demo 页面 (`/static/demo.html`)
+
+轻量级演示页面，聚焦核心检索流程：
+
+- 按产品检索招标库
+- 查看招标详情（预算、评分、技术要求）
+- AI 销售建议生成
+- 客户画像查看
+
+### 完整版页面 (`/static/index.html`)
+
+功能完整的管理界面，包含爬虫控制、LLM 抽取等功能。
+
+## 技术架构
+
+### 双路检索引擎
+
+底层使用 **FAISS 向量检索** + **BM25 关键词检索** 双路召回，通过 **RRF 算法** 融合排序：
+
+```
+RRF_score(d) = Σ 1/(k + rank_i(d)),  k=60
+```
+
+### 服务初始化
+
+启动时自动：
+1. 清理端口占用
+2. 加载 FAISS 索引到内存
+3. 预热向量化和 LLM 模型
+4. 加载客户画像数据
+
+## 服务配置
+
+在 `server_fastapi.py` 中配置：
+
+```python
+# 服务地址和端口
+HOST = "0.0.0.0"      # 监听所有网卡
+PORT = 8103           # 端口
+
+# CORS 配置
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
+
+## 依赖服务
+
+| 服务 | 地址 | 说明 |
+|------|------|------|
+| 向量 Embedding | `http://10.210.10.51:8022/v1` | 文本向量化 |
+| 本地 LLM | `http://10.210.10.51:8001/v1` | AI 销售建议生成 |
+
+## 数据缓存
+
+服务启动时加载到内存的数据：
+
+| 数据 | 路径 |
+|------|------|
+| 客户画像 | `data/output/customer/customer_profiles.jsonl` |
+| 产品检索器 | `data/index/product.index` |
+| 招标检索器 | `data/index_tenders/tenders.index` |

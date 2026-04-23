@@ -36,7 +36,11 @@ python src/etl/extract_structured.py --limit 50
 | 重置数据库 | `python src/utils/reset_db.py` | 清空旧数据，创建新表 | 1 秒 |
 | 爬取列表 | `python src/crawler/ccgp_crawler.py` | 爬取招标公告列表 | 1-3 分钟 |
 | 爬取详情 | `python src/crawler/crawl_detail.py` | 爬取详情、提取附件 | 5-10 分钟 |
-| 结构化抽取 | `python src/etl/extract_structured.py --limit 50` | LLM 抽取关键字段 | 2-5 分钟 |
+| 结构化抽取 | `python src/etl/extract_structured.py --all` | LLM 抽取关键字段 | 视数据量 |
+| 项目聚合 | `python src/etl/aggregate_projects.py` | 聚合项目生命周期 | < 2 分钟 |
+| 客户画像 | `python src/analysis/generate_customer_profiles.py` | 生成客户画像 | < 1 分钟 |
+| 向量化 | `python src/vectorization/vectorize_data.py --type tender` | 生成向量嵌入 | 5-10 分钟 |
+| 构建索引 | `python src/vectorization/build_index.py --type tender` | 构建 FAISS+BM25 索引 | 2-5 分钟 |
 
 ### 1.3 数据流向
 
@@ -58,7 +62,7 @@ python src/etl/extract_structured.py --limit 50
 
 ```bash
 # 进入项目目录
-cd D:\get_data
+cd D:\sales_agent\get_data
 
 # 安装所有依赖
 pip install curl_cffi tqdm openai

@@ -4,27 +4,14 @@
 
 | 文档 | 说明 | 适合人群 |
 |------|------|----------|
-| [README.md](../README.md) | 项目首页，快速了解功能 | 所有人 |
-| [docs/README.md](README.md) | **完整使用指南** | 新用户必读 |
-| [LLM 抽取新手指南.md](LLM 抽取新手指南.md) | LLM 结构化抽取详细教程 | 需要使用 LLM 功能 |
-| [Web 前端使用指南.md](Web 前端使用指南.md) | Web 界面使用教程 | 使用 Web 界面 |
-| [日志系统说明.md](../03_工具使用/日志系统说明.md) | 日志管理和查看 | 需要查看日志 |
+| [README.md](README.md) | **完整使用指南**，快速开始 | 新用户必读 |
+| [LLM 抽取新手指南.md](LLM%20抽取新手指南.md) | LLM 结构化抽取详细教程 | 需要使用 LLM 功能 |
+| [Web 前端使用指南.md](Web%20前端使用指南.md) | Web 界面使用教程 | 使用 Web 界面 |
+| [LLM API 配置指南.md](LLM%20API%20配置指南.md) | DeepSeek/通义千问配置 | 配置 LLM API |
 
 ## 快速操作
 
-### 一键开始（推荐）
-
-Windows 用户直接运行：
-
-```bash
-# 全自动流程（约 15 分钟）
-quick_start.bat
-
-# 测试不同 LLM 模型效果
-test_models.bat
-```
-
-### 手动执行
+### 手动执行完整流程
 
 ```bash
 # 1. 重置数据库
@@ -37,158 +24,94 @@ python src/crawler/ccgp_crawler.py
 python src/crawler/crawl_detail.py
 
 # 4. LLM 抽取
-python src/etl/extract_structured.py --limit 50
+python src/etl/extract_structured.py --all
+python src/etl/import_structured_db.py
+
+# 5. 项目聚合
+python src/etl/aggregate_projects.py
+
+# 6. 生成客户画像
+python src/analysis/generate_customer_profiles.py
+
+# 7. 向量化和索引
+python src/vectorization/vectorize_data.py --type tender
+python src/vectorization/build_index.py --type tender
+
+# 8. 启动服务
+python webapp/server_fastapi.py
+# 访问 http://127.0.0.1:8103/static/demo.html
 ```
 
-## 文档列表
+## 文档目录
 
-### 基础文档
+### 01 入门指南
+- [README.md](README.md) - 完整使用指南（新用户必读）
+- [LLM 抽取新手指南.md](LLM%20抽取新手指南.md) - LLM 结构化抽取教程
+- [LLM API 配置指南.md](LLM%20API%20配置指南.md) - API 配置说明
+- [Web 前端使用指南.md](Web%20前端使用指南.md) - Web 界面教程
 
-| 文档 | 说明 |
-|------|------|
-| [README.md](README.md) | 完整使用指南（新用户必读） |
-| [LLM 抽取新手指南.md](LLM 抽取新手指南.md) | LLM 结构化抽取详细教程 |
+### 02 RAG 方案
+- [MVP RAG 实施方案](../02_RAG%20方案/MVP_RAG_实施方案.md) - RAG 系统设计
+- [向量检索方案设计](../02_RAG%20方案/向量检索方案设计.md) - FAISS + BM25 检索
+- [DeepSeek 结构化抽取报告](../02_RAG%20方案/DeepSeek%20结构化抽取报告.md) - 抽取效果评估
 
-### 高级文档
+### 03 架构设计
+- [项目架构说明](../03_架构设计/项目架构说明.md) - 系统架构
+- [项目详细流程](../03_架构设计/项目详细流程.md) - 数据处理流程
 
-| 文档 | 说明 |
-|------|------|
-| [ALIYUN_LLM_SETUP.md](ALIYUN_LLM_SETUP.md) | 阿里云 LLM 配置说明 |
-| [MVP_RAG_实施方案.md](MVP_RAG_实施方案.md) | MVP 实施方案详细设计 |
-| [项目架构说明.md](项目架构说明.md) | 系统架构设计文档 |
-| [项目详细流程.md](项目详细流程.md) | 项目开发流程记录 |
+### 04 技术文档
+- [附件下载与解析流程](../04_技术文档/附件下载与解析流程.md) - 附件处理
+- [阿里云 LLM 配置](../04_技术文档/ALIYUN_LLM_SETUP.md) - 阿里云配置
+
+### 05 部署运维
+- [部署指南](../05_部署运维/部署指南.md) - 生产环境部署
+- [运维手册](../05_部署运维/运维手册.md) - 日常运维
+- [常见问题排查](../05_部署运维/常见问题排查.md) - 问题诊断
+
+### 06 开发指南
+- [项目结构说明](../06_开发指南/项目结构说明.md) - 代码结构
+- [代码规范](../06_开发指南/代码规范.md) - 开发规范
+- [模块开发教程](../06_开发指南/模块开发教程.md) - 新模块开发
 
 ## 常用命令速查
 
 ### 数据爬取
-
 ```bash
-# 爬取列表页
-python src/crawler/ccgp_crawler.py
-
-# 爬取详情页
-python src/crawler/crawl_detail.py
-
-# 修复附件链接
-python src/crawler/crawl_detail.py repair-att-url
-
-# 导出异常 HTML
-python src/crawler/crawl_detail.py export-bad-html
-
-# 修复内容
-python src/crawler/crawl_detail.py repair-content
+python src/crawler/ccgp_crawler.py           # 爬取列表
+python src/crawler/crawl_detail.py           # 爬取详情
+python src/crawler/crawl_detail.py repair-att-url  # 修复附件
 ```
 
 ### LLM 抽取
-
 ```bash
-# 测试第一条
-python src/etl/core/extract_structured.py --test-first
-
-# 抽取前 50 条
-python src/etl/core/extract_structured.py --limit 50
-
-# 抽取所有
-python src/etl/core/extract_structured.py --all
-
-# 使用不同模型
-python src/etl/core/extract_structured.py --model deepseek-chat --limit 10
-python src/etl/core/extract_structured.py --model qwen-max --limit 10
-
-# 导入数据库
-python src/etl/core/import_structured_db.py --file output/tenders_structured.json
-
-# 批量测试所有模型
-test_models.bat
+python src/etl/extract_structured.py --all    # 全量抽取
+python src/etl/extract_structured.py --limit 50 # 测试 50 条
+python src/etl/import_structured_db.py         # 导入数据库
 ```
 
-### RAG 分块
-
+### 索引构建
 ```bash
-# 生成 chunks
-python src/etl/chunks/generate_chunks.py --all --replace
-
-# 导入附件 chunks
-python src/etl/chunks/import_attachment_chunks.py --import
-```
-
-### 附件处理
-
-```bash
-# 一键执行
-python src/etl/attachments/run_attachment_pipeline.py --verify
-
-# 解析附件
-python src/etl/attachments/parse_attachments.py
+python src/vectorization/vectorize_data.py --type tender  # 向量化
+python src/vectorization/build_index.py --type tender      # 构建索引
 ```
 
 ### 工具命令
-
 ```bash
-# 重置数据库
-python src/utils/reset_db.py
-
-# 查询数据
-python src/etl/query_tenders.py
-
-# 批量保存 HTML
-python src/utils/save_all_html.py
-```
-
-## 配置说明
-
-编辑 `src/config.py` 修改配置：
-
-```python
-# 搜索关键词
-CRAWLER_CONFIG = {
-    "keyword": "通信",      # 修改关键词
-    "max_pages": 3,        # 爬取页数
-}
-
-# DeepSeek API 配置
-DEEPSEEK_CONFIG = {
-    "api_key": "sk-xxx",   # 填入你的 API Key
-}
-```
-
-## 数据说明
-
-### 数据库表结构
-
-**tenders 表**（招标项目）:
-
-| 字段 | 说明 |
-|------|------|
-| id | 主键 |
-| project_name | 项目名称 |
-| publish_date | 发布日期 |
-| detail_url | 详情链接 |
-| content | 公告内容 |
-| attachment_urls | 附件链接（JSON 数组） |
-| status | 状态 |
-| created_at | 创建时间 |
-
-### 输出文件
-
-| 文件 | 说明 | 位置 |
-|------|------|------|
-| `ccgp_data.db` | SQLite 数据库 | `data/` |
-| `tenders_structured.json` | LLM 抽取结果 | `output/` |
-| `extract_*.log` | 抽取日志 | `logs/` |
-
-## 依赖安装
-
-```bash
-pip install curl_cffi tqdm openai
+python src/utils/reset_db.py                  # 重置数据库
+python src/utils/manage_logs.py list --days 7  # 查看日志
 ```
 
 ## 技术栈
 
-- **爬虫**: curl_cffi（绕过反爬）
-- **数据库**: SQLite
-- **结构化抽取**: DeepSeek / 通义千问
-- **语言**: Python 3
+| 层级 | 技术 |
+|------|------|
+| 爬虫 | curl_cffi (绕过 TLS 指纹) |
+| 数据库 | SQLite |
+| AI 抽取 | DeepSeek / 通义千问 / 本地 LLM |
+| 向量检索 | FAISS |
+| 关键词检索 | BM25 + jieba |
+| 后端 | FastAPI |
+| 前端 | HTML5 + CSS + Vanilla JS |
 
 ## 相关链接
 

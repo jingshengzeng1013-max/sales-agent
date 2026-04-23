@@ -72,38 +72,32 @@ D:\sales_agent\get_data\
 ├── src/
 │   ├── crawler/            # 爬虫：支持列表、详情、附件采集
 │   ├── etl/                # 数据处理：LLM 抽取、项目聚合、附件解析
-│   │   ├── core/           # 核心抽取逻辑 (DeepSeek/Qwen)
-│   │   └── aggregate_projects.py # 生命周期聚合引擎
 │   ├── retrieval/          # 检索：混合检索器、RRF 融合算法
 │   ├── vectorization/      # 向量化：文本转向量、索引构建
+│   ├── analysis/           # 分析：AI 销售建议、客户画像生成
+│   ├── storage/            # 存储：数据库操作、JSONL 读写
+│   ├── utils/              # 工具：通用辅助函数
 │   └── config.py           # 全局配置：API Key、关键词、数据库路径
 ├── webapp/                 # Web 服务：FastAPI 接口与前端静态页面
-│   ├── server_fastapi.py   # 后端逻辑与局域网共享配置
+│   ├── server_fastapi.py   # 后端主服务
 │   └── static/             # 前端：demo.html (Tailwind CSS 驱动)
 ├── data/                   # 数据存储：SQLite 数据库、向量索引、JSON 输出
+├── docs/                   # 项目文档
 └── requirements.txt        # 依赖清单
 ```
 
 ---
 
-## 🛠️ 技术栈
+## 📖 模块文档
 
-- **核心引擎**: Python 3.12
-- **数据采集**: `curl_cffi` (绕过 TLS 指纹检测), `BeautifulSoup4`
-- **AI 抽取**: `DeepSeek-V3` / `通义千问 Max` (支持多种 LLM 切换)
-- **向量数据库**: `FAISS` (Facebook AI Similarity Search)
-- **关键词检索**: `Rank-BM25` + `jieba` (中文分词)
-- **后端框架**: `FastAPI` + `Uvicorn`
-- **前端技术**: `HTML5` + `Tailwind CSS` + `Lucide Icons`
-
----
-
-## 📝 配置与自定义
-
-在 `src/config.py` 中，你可以自定义：
-- **搜索关键词**：修改 `CRAWLER_CONFIG["keyword"]`。
-- **API 密钥**：配置 `DEEPSEEK_CONFIG` 或 `DOUBAO_CONFIG`。
-- **检索权重**：调整向量检索与关键词检索的比例（默认 0.5:0.5）。
+| 模块 | 文档 | 说明 |
+|------|------|------|
+| 爬虫 | [src/crawler/README.md](src/crawler/README.md) | 政府采购网数据采集 |
+| ETL | [src/etl/README.md](src/etl/README.md) | LLM 结构化抽取与数据清洗 |
+| 向量化 | [src/vectorization/README.md](src/vectorization/README.md) | 文本 Embedding 与索引构建 |
+| 检索 | [src/retrieval/README.md](src/retrieval/README.md) | 双路混合检索 (FAISS + BM25) |
+| 分析 | [src/analysis/README.md](src/analysis/README.md) | AI 销售建议与客户画像 |
+| Web 服务 | [webapp/README.md](webapp/README.md) | FastAPI 后端与前端页面 |
 
 ---
 
