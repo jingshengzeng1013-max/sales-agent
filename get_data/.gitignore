@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+logs/
+*.log
+
+# Data (keep structure, ignore content)
+data/raw/
+data/html/
+data/attachment/
+data/ccgp_data.db
+data/ccgp_data.db-journal
+data/output/sales_suggestions/
+!data/output/.gitkeep
+
+# Vector store (large binary files)
+data/vector_store/
+data/index/
+data/index_tenders/
+
+# Backups
+*.backup
+*.bak
+customer_profiles_backup.jsonl
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets (if any)
+.env
+*.pem
+*.key
+
+# Temporary files
+tmp/
+temp/
+*.tmp

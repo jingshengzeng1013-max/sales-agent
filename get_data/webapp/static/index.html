@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="api-prefix" content="" />
+  <title>get_data 控制台</title>
+  <link rel="stylesheet" href="/static/styles.css?v=2026040701" />
+</head>
+<body>
+  <header class="header">
+    <div class="header-top">
+      <div>
+        <h1>get_data 控制台</h1>
+        <p class="muted">招投标数据采集与销售情报匹配系统</p>
+      </div>
+      <button
+        type="button"
+        class="secondary header-switch-btn"
+        onclick="window.location.href='/static/demo.html'"
+      >
+        🎯 演示版
+      </button>
+    </div>
+  </header>
+
+  <!-- 主导航 -->
+  <nav class="tabs" role="tablist">
+    <button type="button" class="tab active" data-tab="intel">📊 销售情报</button>
+    <button type="button" class="tab" data-tab="crawl">🕷️ 数据爬取</button>
+    <button type="button" class="tab" data-tab="extract">🤖 结构化抽取</button>
+    <button type="button" class="tab" data-tab="compare">📈 结果对比</button>
+    <button type="button" class="tab" data-tab="retrieval">🔍 混合检索</button>
+    <button type="button" class="tab" data-tab="db">💾 数据库</button>
+  </nav>
+
+  <main class="panels">
+
+    <!-- ==================== 模块一：销售情报（全流程工作台） ==================== -->
+    <section id="panel-intel" class="panel active panel-intel-pipeline">
+      <h2>📊 销售情报 · 全流程工作台</h2>
+      <p class="muted pipeline-intro">
+        将业务链路拆成三步，便于对照执行。第 1、2 步在对应标签中操作；第 3 步可点卡片内<strong>③</strong>打开<strong>混合检索</strong>标签（产品库 FAISS+BM25；可从库内选招标作查询）。
+        <strong>匹配输入来自 <code>tender_structured</code></strong>（第 2 步产物）。完整销售情报流水线请用脚本或命令行调用 <code>run_sales_intel_flow</code>。
+      </p>
+
+      <div class="pipeline-track" role="list">
+        <!-- 步骤 1 -->
+        <article class="pipeline-step" role="listitem">
+          <header class="pipeline-step-header">
+            <span class="pipeline-badge" aria-hidden="true">1</span>
+            <h3>数据爬取与入库</h3>
+          </header>
+          <div class="pipeline-body">
+            <p class="muted">
+              政府采购网 <strong>列表</strong> → <strong>详情</strong> →
+              <code>output/data/tenders_raw.json</code> → 写入 SQLite（<code>tenders</code> 等）。没有落库的原文，后续结构化与销售情报无从谈起。
+            </p>
+            <ul class="pipeline-checks muted">
+              <li>打开「数据爬取」，按需勾选列表 / 入库 / 详情；流式日志在页面底部「响应日志」</li>
+              <li>可选打开「数据库」确认 <code>tenders</code> 是否有新行、<code>content</code> 是否已抓正文</li>
+            </ul>
+            <div class="pipeline-actions">
+              <button type="button" class="secondary" id="btn-pipeline-goto-crawl">① 去数据爬取</button>
+              <button type="button" class="secondary" id="btn-pipeline-goto-db">查看数据库</button>
+            </div>
+          </div>
+        </article>
+
+        <!-- 步骤 2 -->
+        <article class="pipeline-step" role="listitem">
+          <header class="pipeline-step-header">
+            <span class="pipeline-badge" aria-hidden="true">2</span>
+            <h3>结构化处理</h3>
+          </header>
+          <div class="pipeline-body">
+            <p class="muted">
+              从库中读正文，经 LLM 抽取字段 →
+              <code>output/etl/tenders_structured*.json</code>，并可导入
+              <code>tender_structured</code>。销售情报会优先使用结构化里的
+              <code>product_keywords</code>、标准买方名等；<strong>建议在本步完成抽取再跑第 3 步</strong>。
+            </p>
+            <ul class="pipeline-checks muted">
+              <li>「结构化抽取」中设置条数、模型；可勾选「抽取结束后自动导入数据库」</li>
+              <li>需要对比不同模型时，用「结果对比」或修改输出后缀生成多份 JSON</li>
+            </ul>
+            <div class="pipeline-actions">
+              <button type="button" class="secondary" id="btn-pipeline-goto-extract">② 去结构化抽取</button>
+              <button type="button" class="secondary" id="btn-pipeline-goto-compare">去结果对比</button>
+            </div>
+          </div>
+        </article>
+
+        <!-- 步骤 3 -->
+        <article class="pipeline-step" role="listitem">
+          <header class="pipeline-step-header">
+            <span class="pipeline-badge" aria-hidden="true">3</span>
+            <h3>客户识别 · 产品混合检索 · 排序列表</h3>
+          </header>
+          <div class="pipeline-body">
+            <p class="muted">
+              从库中读取<strong>第 2 步已写入</strong>的 <code>tender_structured</code> 后，完整流水线（客户识别、产品匹配、排序）请在项目根目录运行
+              <code>python src/sales_intel_flow.py</code> 等脚本；本页「混合检索」标签<strong>仅</strong>做产品库检索试跑。
+            </p>
+            <ul class="pipeline-checks muted">
+              <li><strong>③ 去混合检索</strong>：与销售情报共用产品索引，适合快速试检索 ranked 列表</li>
+            </ul>
+            <div class="pipeline-actions">
+              <button type="button" class="secondary" id="btn-pipeline-goto-retrieval">③ 去混合检索</button>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <!-- 子模块：情报线索对比（可选：历史手动保存的 JSON） -->
+      <div class="module-card intel-compare-card">
+        <h3>历史快照对比（可选）</h3>
+        <p class="muted">默认不再写入快照；若曾保存过 <code>sales_intel_leads*.json</code>，可在此按「采购单位 + 项目名称」对齐对比</p>
+
+        <div class="compare-toolbar">
+          <button type="button" id="btn-intel-files-refresh" class="secondary">🔄 刷新快照列表</button>
+          <span id="intel-files-hint" class="muted"></span>
+        </div>
+        <div id="intel-files-list" class="compare-file-list" role="group"></div>
+
+        <form id="form-intel-compare" class="form-grid compare-options">
+          <label class="checkbox-row">
+            <input id="intel-compare-intersection" type="checkbox" name="intersection_only" />
+            <span class="checkbox-label-stack">
+              <span class="field-name">仅共同线索</span>
+              <span class="field-hint">只展示在每一份选中快照中都存在的客户 + 项目组合</span>
+            </span>
+          </label>
+          <label>
+            <span class="field-name">最多展示行数</span>
+            <span class="field-hint">对齐后的线索行数上限</span>
+            <input id="intel-compare-max-rows" type="number" min="1" max="200" value="40" />
+          </label>
+          <div class="actions full">
+            <button type="submit">📊 生成对比表</button>
+          </div>
+        </form>
+        <div id="intel-compare-table-wrap"></div>
+      </div>
+    </section>
+
+    <!-- ==================== 模块二：数据爬取 ==================== -->
+    <section id="panel-crawl" class="panel">
+      <h2>🕷️ 招标网数据爬取</h2>
+      <p class="muted">列表抓取 → JSON 入库 → 详情抓取，参数对应 src/crawler_graph.py</p>
+
+      <!-- 子模块 2.1: 爬取参数 -->
+      <div class="module-card">
+        <h3>2.1 爬取参数配置</h3>
+        <p class="muted">
+          <button type="button" id="btn-crawl-defaults" class="linkish">🔄 从服务器加载默认参数</button>
+        </p>
+
+        <form id="form-crawl" class="form-grid crawl-grid">
+          <!-- 基础配置 -->
+          <div class="config-subbox">
+            <h4>基础配置</h4>
+            <label>
+              <span class="field-name">关键词 kw</span>
+              <span class="field-hint">政府采购网列表搜索用的关键字</span>
+              <input id="crawl-keyword" type="text" />
+            </label>
+            <label>
+              <span class="field-name">base_url</span>
+              <span class="field-hint">列表检索页的基础地址，空则用配置默认</span>
+              <input id="crawl-base-url" type="text" placeholder="空=配置默认" />
+            </label>
+          </div>
+
+          <!-- 列表爬取配置 -->
+          <div class="config-subbox">
+            <h4>列表爬取配置</h4>
+            <label>
+              <span class="field-name">列表延迟 min / max（秒）</span>
+              <span class="field-hint">每翻一页列表前随机 sleep 区间</span>
+              <span class="subfield-label">min</span>
+              <input id="crawl-delay-min" type="number" step="0.1" min="0.5" value="2" />
+              <span class="subfield-label">max</span>
+              <input id="crawl-delay-max" type="number" step="0.1" min="0.5" value="5" />
+            </label>
+            <label>
+              <span class="field-name">列表页数 max_pages</span>
+              <span class="field-hint">最多抓几页列表，填 0 表示一直翻到没有结果</span>
+              <input id="crawl-max-pages" type="number" min="0" value="3" />
+            </label>
+            <label>
+              <span class="field-name">列表 HTTP 超时（秒）</span>
+              <span class="field-hint">请求列表页时最长等待时间</span>
+              <input id="crawl-timeout" type="number" min="5" value="30" />
+            </label>
+          </div>
+
+          <!-- 高级参数 -->
+          <div class="config-subbox">
+            <h4>高级参数（一般保持默认）</h4>
+            <label>
+              <span class="field-name">searchtype</span>
+              <span class="field-hint">站点检索类型参数</span>
+              <input id="crawl-searchtype" type="text" value="1" />
+            </label>
+            <label>
+              <span class="field-name">bidSort</span>
+              <span class="field-hint">结果排序方式</span>
+              <input id="crawl-bid-sort" type="text" value="0" />
+            </label>
+            <label>
+              <span class="field-name">time_type</span>
+              <span class="field-hint">按发布时间筛选的区间类型</span>
+              <input id="crawl-time-type" type="text" value="3" />
+            </label>
+            <label>
+              <span class="field-name">start_time / end_time</span>
+              <span class="field-hint">发布日期范围，格式如 2026:02:24</span>
+              <span class="subfield-label">start_time</span>
+              <input id="crawl-start-time" type="text" placeholder="如 2026:02:24" />
+              <span class="subfield-label">end_time</span>
+              <input id="crawl-end-time" type="text" placeholder="空=当天" />
+            </label>
+          </div>
+
+          <!-- 详情爬取配置 -->
+          <div class="config-subbox">
+            <h4>详情爬取配置</h4>
+            <label>
+              <span class="field-name">详情条数上限</span>
+              <span class="field-hint">详情阶段最多处理多少条，0 表示不限制</span>
+              <input id="crawl-detail-limit" type="number" min="0" value="0" />
+            </label>
+            <label>
+              <span class="field-name">详情延迟 min / max（秒）</span>
+              <span class="field-hint">每条详情页请求之间的随机间隔</span>
+              <span class="subfield-label">min</span>
+              <input id="crawl-detail-dmin" type="number" step="0.1" value="2" />
+              <span class="subfield-label">max</span>
+              <input id="crawl-detail-dmax" type="number" step="0.1" value="5" />
+            </label>
+            <label>
+              <span class="field-name">详情 HTTP 超时（秒）</span>
+              <span class="field-hint">打开单个详情页时的超时</span>
+              <input id="crawl-detail-timeout" type="number" value="30" />
+            </label>
+          </div>
+
+          <!-- 执行选项 -->
+          <div class="config-subbox">
+            <h4>执行选项</h4>
+            <label class="checkbox-row">
+              <input id="crawl-run-list" type="checkbox" checked />
+              <span class="checkbox-label-stack">
+                <span class="field-name">执行列表爬取</span>
+                <span class="field-hint">是否跑搜索列表，把标题与详情链接写入 JSON</span>
+              </span>
+            </label>
+            <label class="checkbox-row">
+              <input id="crawl-run-import" type="checkbox" checked />
+              <span class="checkbox-label-stack">
+                <span class="field-name">JSON 入库</span>
+                <span class="field-hint">是否把当前 JSON 追加导入 SQLite tenders 表</span>
+              </span>
+            </label>
+            <label class="checkbox-row">
+              <input id="crawl-run-detail" type="checkbox" checked />
+              <span class="checkbox-label-stack">
+                <span class="field-name">详情爬取</span>
+                <span class="field-hint">是否根据库中待处理记录拉取正文、附件链接等</span>
+              </span>
+            </label>
+          </div>
+
+          <div class="actions full">
+            <button type="submit">▶️ 执行爬虫工作流（实时日志）</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- ==================== 模块三：结构化抽取 ==================== -->
+    <section id="panel-extract" class="panel">
+      <h2>🤖 结构化抽取</h2>
+      <p class="muted">从 SQLite tenders 读取正文，调用 LLM 抽取字段，写入 JSON 并可选导入数据库</p>
+
+      <!-- 子模块 3.1: 抽取参数 -->
+      <div class="module-card">
+        <h3>3.1 LLM 抽取配置</h3>
+        <p class="muted">
+          <button type="button" id="btn-extract-llm-refresh" class="linkish">🔄 刷新模型列表</button>
+        </p>
+
+        <form id="form-extract" class="form-grid crawl-grid" onsubmit="return false;">
+          <label>
+            <span class="field-name">API 线路 provider</span>
+            <span class="field-hint">选择 API 提供商</span>
+            <select id="extract-provider" name="provider">
+              <option value="">自动（按模型名推断线路）</option>
+              <option value="deepseek">DeepSeek API</option>
+              <option value="qwen">通义千问（阿里云 DashScope）</option>
+              <option value="local">本地 OpenAI 兼容</option>
+              <option value="doubao">豆包（火山引擎 Ark）</option>
+            </select>
+          </label>
+          <label>
+            <span class="field-name">模型名称 model</span>
+            <span class="field-hint">输入要使用的模型名称</span>
+            <input id="extract-model" type="text" name="model" list="extract-model-list" placeholder="选择或输入模型名称" />
+            <datalist id="extract-model-list">
+              <option value="deepseek-chat">DeepSeek Chat (V3)</option>
+              <option value="deepseek-reasoner">DeepSeek Reasoner (R1)</option>
+              <option value="qwen3.5-flash">Qwen3.5-Flash</option>
+              <option value="qwen3.5-plus">Qwen3.5-Plus</option>
+              <option value="qwen-max">Qwen-Max</option>
+              <option value="qwen-turbo">Qwen-Turbo</option>
+              <option value="doubao-seed-2-0-lite-260215">Doubao Seed 2.0 Lite</option>
+              <option value="doubao-seed-1.6">Doubao Seed 1.6</option>
+              <option value="local-model">本地模型</option>
+            </datalist>
+          </label>
+          <label>
+            <span class="field-name">处理条数 limit</span>
+            <span class="field-hint">对应库内 tenders 查询的 LIMIT</span>
+            <input id="extract-limit" type="number" name="limit" min="1" max="5000" value="20" />
+          </label>
+          <label class="checkbox-row">
+            <input id="extract-use-llm" type="checkbox" name="use_llm" checked />
+            <span class="checkbox-label-stack">
+              <span class="field-name">启用 LLM</span>
+              <span class="field-hint">关闭则仅做占位入库（用于调试流程）</span>
+            </span>
+          </label>
+          <label>
+            <span class="field-name">输出文件后缀（可选）</span>
+            <span class="field-hint">非空时写入 tenders_structured_后缀.json</span>
+            <input id="extract-output-suffix" type="text" name="output_suffix" placeholder="如 qwen35、deepseek" maxlength="64" pattern="[A-Za-z0-9_-]*"/>
+          </label>
+
+          <div class="actions full">
+            <button type="submit">▶️ 执行抽取（SSE 流式日志）</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- 子模块 3.2: 导入数据库 -->
+      <div class="module-card">
+        <h3>3.2 导入 tender_structured 表</h3>
+        <p class="muted">抽取结果先写入 JSON，再可选由 import_structured_db.py 写入 SQLite</p>
+
+        <label class="checkbox-row extract-import-master">
+          <input id="extract-run-import" type="checkbox" name="run_import" checked />
+          <span class="checkbox-label-stack">
+            <span class="field-name">抽取结束后自动导入数据库</span>
+            <span class="field-hint">在抽取成功完成后执行导入；关闭则只生成 JSON</span>
+          </span>
+        </label>
+
+        <div class="extract-import-sub" id="extract-import-sub">
+          <p class="field-name" style="margin:0 0 0.35rem">导入策略（对已存在于表中的 tender_id）</p>
+          <label class="radio-row">
+            <input type="radio" name="extract-import-mode" id="extract-import-append" value="append" checked />
+            <span><strong>跳过</strong>（默认）— 保留库内旧行，只插入新 ID</span>
+          </label>
+          <label class="radio-row">
+            <input type="radio" name="extract-import-mode" id="extract-import-replace" value="replace" />
+            <span><strong>覆盖更新</strong> — 用 JSON 中该行整表字段覆盖</span>
+          </label>
+
+          <div class="import-preview-row">
+            <span class="field-name">抽取完成时将导入的文件</span>
+            <code id="extract-import-preview" class="import-preview-code">output/etl/tenders_structured.json</code>
+          </div>
+
+          <label class="extract-import-select-label">
+            <span class="field-name">「仅导入」使用的文件</span>
+            <span class="field-hint">从磁盘已有 tenders_structured*.json 中选择</span>
+            <div class="import-file-toolbar">
+              <select id="extract-import-file-select" class="import-file-select" aria-label="选择要导入的 JSON 文件"></select>
+              <button type="button" id="btn-extract-import-refresh" class="secondary">🔄 刷新列表</button>
+            </div>
+          </label>
+
+          <div class="import-only-actions">
+            <button type="button" id="btn-import-structured-only" class="secondary">
+              📥 仅导入到数据库（不跑 LLM 抽取）
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== 模块四：结果对比 ==================== -->
+    <section id="panel-compare" class="panel panel-compare">
+      <h2>📈 结构化结果对比</h2>
+      <p class="muted">读取 output 目录下 tenders_structured*.json，按 tender_id 对齐多个模型的抽取字段</p>
+
+      <!-- 子模块 4.1: 文件选择与对比 -->
+      <div class="module-card">
+        <h3>4.1 多模型结果对比表</h3>
+
+        <div class="compare-toolbar">
+          <button type="button" id="btn-structured-files-refresh" class="secondary">🔄 刷新文件列表</button>
+          <span id="structured-files-hint" class="muted"></span>
+        </div>
+        <div id="structured-files-list" class="compare-file-list" role="group"></div>
+
+        <form id="form-compare" class="form-grid compare-options">
+          <label class="checkbox-row">
+            <input id="compare-intersection" type="checkbox" name="intersection_only" />
+            <span class="checkbox-label-stack">
+              <span class="field-name">仅共同 tender_id</span>
+              <span class="field-hint">只展示在每一份选中文件中都存在的招标 ID</span>
+            </span>
+          </label>
+          <label>
+            <span class="field-name">最多展示条数</span>
+            <span class="field-hint">按 tender_id 排序后截取前 N 条</span>
+            <input id="compare-max-tenders" type="number" min="1" max="200" value="40" />
+          </label>
+          <div class="actions">
+            <button type="submit">📊 生成对比表</button>
+          </div>
+        </form>
+        <div id="compare-table-wrap" class="compare-table-wrap"></div>
+      </div>
+    </section>
+
+    <!-- ==================== 模块五：FAISS + BM25 混合检索 ==================== -->
+    <section id="panel-retrieval" class="panel panel-retrieval">
+      <h2>🔍 产品混合检索（FAISS + BM25）</h2>
+      <p class="muted">
+        与 <code>tools/match_product</code> 共用 <code>data/products.json</code> 与 <code>data/index/</code>；RRF
+        融合向量与关键词得分。首次检索可能加载嵌入模型，请稍候。
+      </p>
+      <div class="module-card">
+        <h3>5.0 检索试用</h3>
+        <p id="retrieval-status-hint" class="muted retrieval-hint" role="status">
+          打开本页将自动检测环境与索引状态。
+        </p>
+        <form id="form-retrieval" class="form-grid crawl-grid">
+          <div class="intel-tender-pick-box module-card-nested">
+            <h4 class="pipeline-form-title">从数据库选择招标（可选）</h4>
+            <p class="muted">
+              与销售情报第 3 步相同数据源：已 JOIN <code>tender_structured</code> 的记录。
+              <strong>若填写或选中 <code>tenders.id</code>，服务端将按该记录拼接查询串并检索，此时忽略下方手动查询文本。</strong>
+              多选时仅使用<strong>首个</strong>有效 ID（手动输入优先于列表选中顺序）。
+            </p>
+            <div class="intel-tender-pick-row">
+              <select id="retrieval-tender-select" multiple size="7" class="intel-tender-multi" aria-label="混合检索用已结构化招标"></select>
+              <div class="intel-tender-pick-side">
+                <button type="button" class="secondary" id="btn-retrieval-load-tenders">🔄 加载已结构化列表</button>
+                <span class="field-hint">按住 Ctrl/⌘ 多选；与手动 ID 二选一或手填优先</span>
+              </div>
+            </div>
+            <label>
+              <span class="field-name">或手动填写招标 ID</span>
+              <span class="field-hint">逗号、空格分隔，取第一个正整数；非空时优先于列表勾选</span>
+              <input type="text" id="retrieval-tender-ids-manual" placeholder="例如 144" autocomplete="off" />
+            </label>
+          </div>
+          <label class="retrieval-query-label">
+            <span class="field-name">查询文本（无 tender_id 时必填）</span>
+            <span class="field-hint">未指定库内招标时：手动输入需求描述 / 技术关键词等</span>
+            <textarea id="retrieval-query" rows="4" maxlength="8000" placeholder="例如：车载短距无线通信 | 客户类型：整车厂 | 技术关键词：蓝牙 WiFi"></textarea>
+          </label>
+          <label>
+            <span class="field-name">返回条数 top_k</span>
+            <span class="field-hint">1–2000；若命中少于 K 条说明索引内文档不足或 min_score 过滤</span>
+            <input id="retrieval-top-k" type="number" min="1" max="2000" value="10" />
+          </label>
+          <label>
+            <span class="field-name">最低综合分 min_score</span>
+            <span class="field-hint">0–1，与接口归一化后 score 比较</span>
+            <input id="retrieval-min-score" type="number" min="0" max="1" step="0.05" value="0" />
+          </label>
+          <label>
+            <span class="field-name">向量权重 (FAISS)</span>
+            <span class="field-hint">当前: <span id="retrieval-vector-weight-val">0.5</span></span>
+            <input id="retrieval-vector-weight" type="range" min="0" max="1" step="0.1" value="0.5" />
+          </label>
+          <label>
+            <span class="field-name">关键词权重 (BM25)</span>
+            <span class="field-hint">当前: <span id="retrieval-bm25-weight-val">0.5</span></span>
+            <input id="retrieval-bm25-weight" type="range" min="0" max="1" step="0.1" value="0.5" />
+          </label>
+          <label class="retrieval-checks">
+            <span class="field-name">检索分支</span>
+            <span class="field-hint">可只开向量或只开 BM25 做对比</span>
+            <span class="inline-checks">
+              <label><input type="checkbox" id="retrieval-use-vector" checked /> FAISS 向量</label>
+              <label><input type="checkbox" id="retrieval-use-bm25" checked /> BM25</label>
+            </span>
+          </label>
+          <div class="actions">
+            <button type="submit" id="btn-retrieval-search">🔎 检索</button>
+            <button type="button" id="btn-retrieval-refresh-status" class="secondary">🔄 刷新状态</button>
+          </div>
+        </form>
+        <div id="retrieval-results" class="retrieval-results" aria-live="polite"></div>
+      </div>
+
+      <div class="module-card">
+        <h3>5.1 按产品检索招标库</h3>
+        <p class="muted">
+          使用 <code>data/index_tenders</code>（由 <code>tender_structured</code> 重点字段拼接构建）。
+          选择产品后服务端用与产品索引相同的文档格式生成查询；也可手写查询覆盖。
+          API：<code>POST /api/retrieval/search-tenders</code>。
+          <strong>返回条数 ≤ 索引内招标条数</strong>：若建索引时曾加 <code>--limit 5</code>，则最多只能命中 5 条，需不加 limit 全量重建。
+        </p>
+        <form id="form-retrieval-tenders" class="form-grid crawl-grid">
+          <label>
+            <span class="field-name">产品</span>
+            <span class="field-hint">来自 data/index 或 products.json</span>
+            <select id="retrieval-tenders-product-select" aria-label="按产品检索招标"></select>
+          </label>
+          <label>
+            <span class="field-name">返回条数 top_k</span>
+            <span class="field-hint">1–2000；受索引规模限制（见上方说明）</span>
+            <input id="retrieval-tenders-top-k" type="number" min="1" max="2000" value="20" />
+          </label>
+          <label>
+            <span class="field-name">最低综合分 min_score</span>
+            <input id="retrieval-tenders-min-score" type="number" min="0" max="1" step="0.05" value="0" />
+          </label>
+          <label>
+            <span class="field-name">向量权重 (FAISS)</span>
+            <span class="field-hint">当前: <span id="retrieval-tenders-vector-weight-val">0.5</span></span>
+            <input id="retrieval-tenders-vector-weight" type="range" min="0" max="1" step="0.1" value="0.5" />
+          </label>
+          <label>
+            <span class="field-name">关键词权重 (BM25)</span>
+            <span class="field-hint">当前: <span id="retrieval-tenders-bm25-weight-val">0.5</span></span>
+            <input id="retrieval-tenders-bm25-weight" type="range" min="0" max="1" step="0.1" value="0.5" />
+          </label>
+          <label class="retrieval-checks">
+            <span class="field-name">检索分支</span>
+            <span class="inline-checks">
+              <label><input type="checkbox" id="retrieval-tenders-use-vector" checked /> FAISS 向量</label>
+              <label><input type="checkbox" id="retrieval-tenders-use-bm25" checked /> BM25</label>
+            </span>
+          </label>
+          <div class="actions">
+            <button type="submit" id="btn-retrieval-tenders-search">🔎 检索招标</button>
+            <button type="button" id="btn-retrieval-tenders-load-products" class="secondary">🔄 加载产品列表</button>
+          </div>
+        </form>
+        <div id="retrieval-tenders-results" class="retrieval-results" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <!-- ==================== 模块六：数据库浏览 ==================== -->
+    <section id="panel-db" class="panel panel-db">
+      <h2>💾 SQLite 数据库浏览</h2>
+      <p class="muted">只读预览 config 中的库，长文本单元格会截断</p>
+
+      <!-- 子模块 5.1: 表数据浏览 -->
+      <div class="module-card">
+        <h3>5.1 表数据浏览</h3>
+
+        <form id="form-db" class="form-grid db-toolbar">
+          <label>
+            <span class="field-name">表</span>
+            <span class="field-hint">要浏览的 SQLite 业务表</span>
+            <select id="db-table-select" name="table">
+              <option value="">— 请先刷新表列表 —</option>
+            </select>
+          </label>
+          <label>
+            <span class="field-name">每页条数 limit</span>
+            <span class="field-hint">单次请求最多返回多少行（1–500）</span>
+            <input id="db-limit" type="number" min="1" max="500" value="50" />
+          </label>
+          <label>
+            <span class="field-name">偏移 offset</span>
+            <span class="field-hint">从第几行开始读（0 为第一行）</span>
+            <input id="db-offset" type="number" min="0" value="0" />
+          </label>
+          <div class="actions db-actions">
+            <button type="button" id="btn-db-refresh-tables">🔄 刷新表列表</button>
+            <button type="button" id="btn-db-load">📥 加载数据</button>
+          </div>
+        </form>
+        <p id="db-status" class="db-status muted" role="status">
+          切换到本页会自动加载表列表；也可点击「刷新列表」。状态将显示在这里。
+        </p>
+        <div id="db-table-wrap" class="db-table-wrap">
+          <p class="muted">选择表并点击「加载数据」。</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- 响应输出区 -->
+  <section class="output-section">
+    <div class="output-head">
+      <h2>📜 响应日志</h2>
+      <button type="button" id="btn-clear-output" class="secondary">🗑️ 清空</button>
+    </div>
+    <pre id="output" class="output mono" role="status">等待请求…</pre>
+  </section>
+
+  <!-- 招标详情模态框 -->
+  <div id="tender-detail-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modal-title">招标详情</h3>
+        <button type="button" class="modal-close" aria-label="关闭">×</button>
+      </div>
+      <div class="modal-body" id="modal-body">
+        <div class="modal-loading muted">加载中…</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js?v=2026040818"></script>
+</body>
+</html>
