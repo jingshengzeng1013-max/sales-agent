@@ -38,9 +38,9 @@
 1. **已爬取数据到数据库**
    ```bash
    # 如果还没有数据，先执行爬取
-   python src/utils/reset_db.py
-   python src/crawler/ccgp_crawler.py
-   python src/crawler/crawl_detail.py
+   cd D:\sales_agent\get_data
+   python -m src.crawler.ccgp_crawler
+   python -m src.crawler.crawl_detail
    ```
 
 2. **配置 LLM API Key**
@@ -57,7 +57,8 @@
 先测试第一条数据，确保配置正确：
 
 ```bash
-python src/etl/extract_structuted.py --test-first
+cd D:\sales_agent\get_data
+python -m src.etl.core.extract_structured --test-first
 ```
 
 **预期输出**:
@@ -83,10 +84,10 @@ python src/etl/extract_structuted.py --test-first
 
 ```bash
 # 抽取前 50 条
-python src/etl/extract_structured.py --limit 50
+python -m src.etl.core.extract_structured --limit 50
 
 # 抽取所有记录
-python src/etl/extract_structured.py --all
+python -m src.etl.core.extract_structured --all
 ```
 
 ---
@@ -97,7 +98,7 @@ python src/etl/extract_structured.py --all
 
 抽取结果保存在：
 ```
-output/tenders_structured_deepseek-chat.json
+get_data/data/output/etl/tenders_structured_{model_name}.jsonl
 ```
 
 ### JSON 文件内容示例
@@ -131,46 +132,38 @@ output/tenders_structured_deepseek-chat.json
 
 ## 使用不同模型
 
-系统支持 4 种 LLM 模型，可以对比效果：
+系统支持多种 LLM 模型，可以对比效果：
 
 ### 模型对比
 
 | 模型 | 优点 | 缺点 | 适合场景 |
 |------|------|------|----------|
-| DeepSeek V3 | 性价比高，速度快 | 复杂推理稍弱 | 日常批量抽取 |
-| DeepSeek R1 | 推理能力强 | 价格较高 | 复杂公告抽取 |
-| 通义千问 Max | 中文理解最强 | 价格最贵 | 高精度要求 |
-| 通义千问 Plus | 性价比高 | 能力中等 | 日常使用 |
+| deepseek-chat | 性价比高，速度快 | 复杂推理稍弱 | 日常批量抽取 |
+| deepseek-reasoner | 推理能力强 | 价格较高 | 复杂公告抽取 |
+| qwen-plus | 中文理解好 | 能力中等 | 日常使用 |
+| qwen-max | 中文理解最强 | 价格最贵 | 高精度要求 |
 
 ### 切换模型
 
 ```bash
 # DeepSeek V3（默认推荐）
-python src/etl/extract_structured.py --model deepseek-chat --limit 10
+python -m src.etl.core.extract_structured --model deepseek --limit 10
 
 # DeepSeek R1（推理版）
-python src/etl/extract_structured.py --model deepseek-reasoner --limit 10
-
-# 通义千问 Max
-python src/etl/extract_structured.py --model qwen-max --limit 10
+python -m src.etl.core.extract_structured --model deepseek --model-name deepseek-reasoner --limit 10
 
 # 通义千问 Plus
-python src/etl/extract_structured.py --model qwen-plus --limit 10
+python -m src.etl.core.extract_structured --model qwen --limit 10
 ```
 
-### 批量测试所有模型
-
-运行测试脚本，自动对比 4 个模型的效果：
+### 本地模型
 
 ```bash
-test_models.bat
+# 使用本地部署的 LLM
+set LOCAL_LLM_BASE_URL=http://10.210.10.51:8002/v1
+set LOCAL_LLM_MODEL=/models/Kimi-K2.5
+python -m src.etl.core.extract_structured --model local --limit 10
 ```
-
-测试完成后，会生成 4 个 JSON 文件：
-- `output/tenders_structured_deepseek-v3.json`
-- `output/tenders_structured_deepseek-r1.json`
-- `output/tenders_structured_qwen-max.json`
-- `output/tenders_structured_qwen-plus.json`
 
 ---
 
@@ -191,12 +184,6 @@ test_models.bat
 输出：约 500-800 tokens
 
 花费范围：¥0.001 - ¥0.005 / 条
-```
-
-### 100 条记录总花费
-
-```
-约 ¥0.1 - ¥0.5 元
 ```
 
 ### 查看实时花费
@@ -230,18 +217,13 @@ test_models.bat
 
 ### Q3: 如何查看抽取结果？
 
-**方法 1**: 直接打开 JSON 文件
+**方法**: 直接打开 JSONL 文件
 ```bash
 # Windows
-notepad output/tenders_structured_deepseek-chat.json
+notepad data\output\etl\tenders_structured_deepseek.jsonl
 
 # macOS/Linux
-cat output/tenders_structured_deepseek-chat.json
-```
-
-**方法 2**: 使用查询工具
-```bash
-python src/etl/query_tenders.py
+cat data/output/etl/tenders_structured_deepseek.jsonl
 ```
 
 ### Q4: 抽取到一半出错了，需要重新开始吗？
@@ -250,18 +232,18 @@ python src/etl/query_tenders.py
 
 ```bash
 # 再次运行相同命令，会自动继续
-python src/etl/extract_structured.py --limit 50
+python -m src.etl.core.extract_structured --limit 50
 ```
 
 ### Q5: 如何清空抽取结果重新开始？
 
-**方法**: 删除 JSON 文件
+**方法**: 删除 JSONL 文件
 ```bash
 # Windows
-del output\tenders_structured_*.json
+del data\output\etl\tenders_structured_*.jsonl
 
 # macOS/Linux
-rm output/tenders_structured_*.json
+rm data/output/etl/tenders_structured_*.jsonl
 ```
 
 ---
@@ -271,20 +253,20 @@ rm output/tenders_structured_*.json
 ### 不使用 LLM（仅保存原始数据）
 
 ```bash
-python src/etl/extract_structured.py --limit 50 --no-llm
+python -m src.etl.core.extract_structured --limit 50 --no-llm
 ```
 
 ### 指定输出文件后缀
 
 ```bash
-python src/etl/extract_structured.py --limit 50 --output-suffix test1
+python -m src.etl.core.extract_structured --limit 50 --output-suffix test1
 ```
 
-输出文件：`output/tenders_structured_test1.json`
+输出文件：`data/output/etl/tenders_structured_test1.jsonl`
 
 ### 查看日志文件
 
-日志文件位置：`logs/extract_YYYYMMDD_HHMMSS.log`
+日志文件位置：`logs/extract_*.log`
 
 ```bash
 # Windows

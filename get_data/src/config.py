@@ -60,9 +60,9 @@ DOUBAO_CONFIG = {
 LOCAL_LLM_CONFIG = {
     "api_key": os.environ.get("LOCAL_LLM_API_KEY", "local-api-key"),
     "base_url": os.environ.get(
-        "LOCAL_LLM_BASE_URL", "http://10.210.10.51:8001/v1"
+        "LOCAL_LLM_BASE_URL", "http://10.210.10.51:8002/v1"
     ).rstrip("/"),
-    "model": os.environ.get("LOCAL_LLM_MODEL", "/models/Qwen3.5-27B"),
+    "model": os.environ.get("LOCAL_LLM_MODEL", "/models/Kimi-K2.5"),
     "timeout": int(os.environ.get("LOCAL_LLM_TIMEOUT", "600")),
 }
 
