@@ -52,28 +52,35 @@ cd get_data
 pip install -r requirements.txt
 ```
 
-### 2. 初始化与数据采集
+### 2. 数据采集
 
 ```bash
-# 重置数据库
-python src/utils/reset_db.py
+cd get_data
 
-# 采集数据
-python src/crawler/ccgp_crawler.py
-python src/crawler/crawl_detail.py
+# 采集招标公告列表
+python -m src.crawler.ccgp_crawler
+
+# 爬取详情页
+python -m src.crawler.crawl_detail
 
 # AI 结构化抽取
-python src/etl/core/extract_structured.py --all
+python -m src.etl.core.extract_structured --limit 50
 
 # 项目聚合
-python src/etl/aggregate_projects.py
-
-# 构建索引
-python src/vectorization/vectorize_data.py
-python src/vectorization/build_index.py
+python -m src.etl.aggregate_projects
 ```
 
-### 3. 启动服务
+### 3. 构建索引
+
+```bash
+# 向量化数据
+python -m src.vectorization.vectorize_data --type tender
+
+# 构建检索索引
+python -m src.vectorization.build_index --type tender
+```
+
+### 4. 启动服务
 
 ```bash
 python webapp/server_fastapi.py
@@ -81,7 +88,7 @@ python webapp/server_fastapi.py
 
 访问地址：
 - 本地：`http://127.0.0.1:8103/static/demo.html`
-- 局域网：`http://[你的IP]:8103/static/demo.html`
+- 完整版：`http://127.0.0.1:8103/static/index.html`
 
 ---
 
@@ -100,13 +107,83 @@ python webapp/server_fastapi.py
 
 ---
 
-## 文档
+## 文档目录
 
-- [数据采集说明](get_data/src/crawler/README.md)
-- [ETL 处理说明](get_data/src/etl/README.md)
-- [检索模块说明](get_data/src/retrieval/README.md)
-- [Web 服务说明](get_data/webapp/README.md)
+### 入门指南
+| 文档 | 说明 |
+|------|------|
+| [快速开始指南](get_data/docs/01_入门指南/README.md) | 5 分钟快速上手 |
+| [LLM 抽取新手指南](get_data/docs/01_入门指南/LLM%20抽取新手指南.md) | 结构化抽取入门 |
+| [LLM API 配置指南](get_data/docs/01_入门指南/LLM%20API%20配置指南.md) | DeepSeek/本地 LLM 配置 |
+| [Web 前端使用指南](get_data/docs/01_入门指南/Web%20前端使用指南.md) | 界面功能说明 |
+
+### RAG 与检索
+| 文档 | 说明 |
+|------|------|
+| [MVP RAG 实施方案](get_data/docs/02_RAG%20方案/MVP_RAG_实施方案.md) | RAG 系统设计 |
+| [向量检索方案设计](get_data/docs/02_RAG%20方案/向量检索方案设计.md) | FAISS + BM25 混合检索 |
+| [混合检索技术报告](../../docs/hybrid_search_technical_report.md) | 检索技术细节 |
+| [混合检索方案](../../docs/hybrid_search_plan.md) | 检索方案概览 |
+
+### 架构与流程
+| 文档 | 说明 |
+|------|------|
+| [项目架构说明](get_data/docs/03_架构设计/项目架构说明.md) | 系统架构概述 |
+| [项目详细流程](get_data/docs/03_架构设计/项目详细流程.md) | 数据处理流程 |
+| [数据流水线指南](../../docs/PIPELINE_GUIDE.md) | 完整数据处理流程 |
+
+### 工具使用
+| 文档 | 说明 |
+|------|------|
+| [日志系统说明](get_data/docs/03_工具使用/日志系统说明.md) | 日志配置与使用 |
+
+### 技术文档
+| 文档 | 说明 |
+|------|------|
+| [附件下载与解析流程](get_data/docs/04_技术文档/附件下载与解析流程.md) | 附件处理说明 |
+| [附件链接修复说明](get_data/docs/04_技术文档/附件链接修复说明.md) | 链接修复指南 |
+| [阿里云 LLM 配置](get_data/docs/04_技术文档/ALIYUN_LLM_SETUP.md) | 阿里云模型配置 |
+
+### 部署运维
+| 文档 | 说明 |
+|------|------|
+| [部署指南](get_data/docs/05_部署运维/部署指南.md) | 生产环境部署 |
+| [运维手册](get_data/docs/05_部署运维/运维手册.md) | 日常运维操作 |
+| [常见问题排查](get_data/docs/05_部署运维/常见问题排查.md) | 问题诊断与解决 |
+
+### 开发指南
+| 文档 | 说明 |
+|------|------|
+| [项目结构说明](get_data/docs/06_开发指南/项目结构说明.md) | 代码结构详解 |
+| [代码规范](get_data/docs/06_开发指南/代码规范.md) | 开发规范与约定 |
+| [模块开发教程](get_data/docs/06_开发指南/模块开发教程.md) | 新模块开发指南 |
+
+### 业务方案
+| 文档 | 说明 |
+|------|------|
+| [客户画像与智能拓客方案](docs/客户画像与智能拓客方案.md) | 客户画像设计 |
+| [客户画像参数说明](docs/客户画像参数说明.md) | 画像字段定义 |
+| [招标搜索关键词指南](docs/招标搜索关键词指南.md) | 爬虫关键词参考 |
+| [客服接口文档](docs/客服接口文档.md) | 微信客服 API |
+
+### 交接文档
+| 文档 | 说明 |
+|------|------|
+| [项目交接说明](get_data/docs/项目交接说明.md) | 项目交接清单 |
 
 ---
 
-*Last Updated: 2026-04-21*
+## 模块文档
+
+| 模块 | 文档 |
+|------|------|
+| 爬虫 | [get_data/src/crawler/README.md](get_data/src/crawler/README.md) |
+| ETL | [get_data/src/etl/README.md](get_data/src/etl/README.md) |
+| 检索 | [get_data/src/retrieval/README.md](get_data/src/retrieval/README.md) |
+| 向量化 | [get_data/src/vectorization/README.md](get_data/src/vectorization/README.md) |
+| 分析 | [get_data/src/analysis/README.md](get_data/src/analysis/README.md) |
+| Web 服务 | [get_data/webapp/README.md](get_data/webapp/README.md) |
+
+---
+
+*Last Updated: 2026-04-27*
