@@ -8,27 +8,27 @@ WORKDIR /app
 
 # 安装系统依赖
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc g++ curl \
+    gcc g++ curl libgl1-mesa-glx libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# 安装 Python 依赖（精简，排除 streamlit/爬虫等不需要的包）
+# 安装 Python 依赖（精简，排除爬虫/streamlit 等不需要的包）
+# 分步安装：先装编译依赖重的包，再装其余的
+RUN pip install --no-cache-dir numpy==1.26.4
+RUN pip install --no-cache-dir faiss-cpu==1.9.0
 RUN pip install --no-cache-dir \
-    curl_cffi==0.14.0 \
-    tqdm==4.67.3 \
     openai==1.72.0 \
     fastapi==0.135.2 \
     uvicorn==0.42.0 \
     pydantic==2.11.0 \
-    numpy==2.3.0 \
     jieba==0.42.1 \
     rank-bm25==0.2.2 \
-    faiss-cpu==1.13.2 \
     pandas==2.2.3 \
     openpyxl==3.2.0 \
     beautifulsoup4==4.13.3 \
     requests==2.33.1 \
     httpx==0.30.0 \
-    python-multipart==0.0.22
+    python-multipart==0.0.22 \
+    tqdm==4.67.3
 
 # 复制项目代码
 COPY get_data/ /app/
