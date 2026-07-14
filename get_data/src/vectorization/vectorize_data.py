@@ -29,24 +29,20 @@ class Vectorizer:
         self.client = OpenAI(
             api_key=self.api_key,
             base_url=self.base_url,
-            timeout=60.0
+            timeout=10.0,
+            max_retries=0
         )
 
     def get_embeddings(self, texts: List[str]) -> List[List[float]]:
         """调用本地接口获取向量"""
-        try:
-            # 过滤空字符串
-            texts = [t if t and t.strip() else "None" for t in texts]
-            
-            response = self.client.embeddings.create(
-                model=self.model,
-                input=texts
-            )
-            return [data.embedding for data in response.data]
-        except Exception as e:
-            print(f"\n[ERROR] 向量化失败: {e}")
-            # 如果失败，返回零向量作为占位
-            return [[0.0] * self.dimension for _ in texts]
+        # 过滤空字符串
+        texts = [t if t and t.strip() else "None" for t in texts]
+        
+        response = self.client.embeddings.create(
+            model=self.model,
+            input=texts
+        )
+        return [data.embedding for data in response.data]
 
     def vectorize_products(self, product_path: str, output_path: str):
         """将 product.jsonl 向量化并保存"""
