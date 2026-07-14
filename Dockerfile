@@ -26,7 +26,7 @@ RUN pip install --no-cache-dir \
     openpyxl==3.1.5 \
     beautifulsoup4==4.13.3 \
     requests==2.33.1 \
-    httpx==0.30.0 \
+    httpx==0.28.1 \
     python-multipart==0.0.22 \
     tqdm==4.67.3
 
