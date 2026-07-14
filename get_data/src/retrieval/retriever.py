@@ -30,11 +30,16 @@ class DualRetriever:
         :param data_type: "product" 或 "tender"
         """
         self.data_type = data_type
-        # 初始化 vectorizer，但如果 Embedding API 不可达则设为 None
+        # 初始化 vectorizer，并快速探测 Embedding API 是否可用
+        self.vectorizer = None
         try:
-            self.vectorizer = Vectorizer()
+            v = Vectorizer()
+            # 快速探测：发一个空请求，3秒内不响应则认为不可达
+            v.get_embeddings(["test"])
+            self.vectorizer = v
+            logger.info("Embedding API 可用，向量检索已启用")
         except Exception as e:
-            logger.warning(f"Vectorizer 初始化失败，向量检索将仅使用预存 embedding: {e}")
+            logger.warning(f"Embedding API 不可达，自动降级为纯 BM25 检索: {e}")
             self.vectorizer = None
         self.dimension = EMBEDDING_CONFIG.get("dimension", 1024)
         
