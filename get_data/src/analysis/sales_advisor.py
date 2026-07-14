@@ -17,7 +17,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(BASE_DIR))
 
-from src.config import LOCAL_LLM_CONFIG, OUTPUT_DIR
+from src.config import OUTPUT_DIR
 
 logger = logging.getLogger("sales_advisor")
 
@@ -88,10 +88,12 @@ class SalesSuggestionCache:
 
 class SalesAdvisor:
     def __init__(self, use_cache: bool = True):
-        # 从配置中获取 LLM 设置
-        self.base_url = LOCAL_LLM_CONFIG.get("base_url", "http://10.210.10.51:8001/v1")
-        self.api_key = LOCAL_LLM_CONFIG.get("api_key", "sk-local")
-        self.model = LOCAL_LLM_CONFIG.get("model", "/models/Qwen3.5-27B")
+        # 从统一配置中获取 LLM 设置
+        from src.config import get_llm_config
+        llm_config = get_llm_config()
+        self.base_url = llm_config.get("base_url", "https://api.minimaxi.com/v1")
+        self.api_key = llm_config.get("api_key", "")
+        self.model = llm_config.get("model", "MiniMax-M3")
 
         self.client = OpenAI(
             api_key=self.api_key,

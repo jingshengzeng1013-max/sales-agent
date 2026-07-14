@@ -91,14 +91,15 @@ class SalesAgent:
                 sys.path.append(str(BASE_DIR))
 
                 try:
-                    from src.config import LOCAL_LLM_CONFIG
-                    api_key = api_key or LOCAL_LLM_CONFIG.get("api_key", "sk-local")
-                    base_url = base_url or LOCAL_LLM_CONFIG.get("base_url", "http://10.210.10.51:8001/v1")
-                    self.model = self.model or LOCAL_LLM_CONFIG.get("model", "/models/Qwen3.5-27B")
+                    from src.config import get_llm_config
+                    llm_config = get_llm_config()
+                    api_key = api_key or llm_config.get("api_key", "")
+                    base_url = base_url or llm_config.get("base_url", "https://api.minimaxi.com/v1")
+                    self.model = self.model or llm_config.get("model", "MiniMax-M3")
                 except ImportError:
                     # 默认值
-                    api_key = api_key or "sk-local"
-                    base_url = base_url or "http://10.210.10.51:8001/v1"
+                    api_key = api_key or ""
+                    base_url = base_url or "https://api.minimaxi.com/v1"
 
             self.client = OpenAI(
                 api_key=api_key,
