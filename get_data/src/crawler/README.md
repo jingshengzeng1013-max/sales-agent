@@ -7,6 +7,9 @@
 ```
 src/crawler/
 ├── ccgp_crawler.py              # 列表页爬虫（公告列表采集）
+├── smart_web_fetch.py           # Smart Web Fetch 五层降级抓取适配器
+├── ccgp_smart_fetch.py          # CCGP 首页 Smart Web Fetch 示例采集器
+├── ccgp_smart_search.py         # Smart Web Fetch 搜全文列表与详情采集器
 ├── crawl_detail.py              # 详情页爬虫（正文内容采集）
 ├── download_attachments.py      # 附件下载器
 ├── batch_crawl_attachments.py  # 批量附件下载
@@ -57,7 +60,63 @@ python src/crawler/crawl_detail.py --test-first
 **输出**：
 - `data/output/crawler/tenders_detail.jsonl` - 招标详情
 
-### 3. 附件下载 (download_attachments.py / batch_crawl_attachments.py)
+### 3. Smart Web Fetch 兜底采集 (smart_web_fetch.py / ccgp_smart_fetch.py / ccgp_smart_search.py)
+
+基于虾评 Skill「Smart Web Fetch」公开说明新增的采集技术栈。适合在传统 `curl_cffi + 代理池` 抓取失败时，用第三方 Markdown Reader 和可选浏览器层获取公开网页内容。
+
+**降级顺序**：
+
+1. `markdown.new`
+2. `defuddle.md`
+3. `r.jina.ai`
+4. `Scrapling`（可选依赖）
+5. `Playwright`（显式启用 `--include-browser`）
+
+**使用示例**：
+
+```bash
+# 抓取中国政府采购网首页链接
+python src/crawler/ccgp_smart_fetch.py --max-items 50 --print-items
+
+# 在采购公告栏按“搜全文”搜索通信，并抓取列表和详情
+python src/crawler/ccgp_smart_search.py \
+  --keyword 通信 \
+  --pages 1 \
+  --crawl-details \
+  --detail-limit 3 \
+  --print-items
+
+# 直接使用 CCGP 已构造好的搜索页 URL
+python src/crawler/ccgp_smart_search.py \
+  --search-url "https://search.ccgp.gov.cn/bxsearch?searchtype=2&page_index=1&start_time=&end_time=&timeType=2&searchparam=&searchchannel=0&dbselect=bidx&kw=%E9%80%9A%E4%BF%A1&bidSort=0&pinMu=0&bidType=0&buyerName=&projectId=&displayZone=&zoneId=&agentName=" \
+  --crawl-details \
+  --detail-limit 3 \
+  --print-items
+
+# 指定目标 URL 和输出文件
+python src/crawler/ccgp_smart_fetch.py \
+  --url https://www.ccgp.gov.cn/ \
+  --output data/output/crawler/ccgp_home_smart_fetch.jsonl
+
+# 如需接入既有 ETL，可把 Smart 搜索输出写到标准文件名
+python src/crawler/ccgp_smart_search.py \
+  --keyword 通信 \
+  --pages 1 \
+  --crawl-details \
+  --list-output data/output/crawler/tenders_list.jsonl \
+  --detail-output data/output/crawler/tenders_detail.jsonl
+```
+
+**输出**：
+- `data/output/crawler/ccgp_home_smart_fetch.jsonl` - 首页链接采集结果
+- `data/output/crawler/tenders_list_smart_fetch.jsonl` - 搜全文采购公告列表
+- `data/output/crawler/tenders_detail_smart_fetch.jsonl` - 搜全文详情正文解析结果
+
+**注意**：
+- `markdown.new`、`defuddle.md`、`r.jina.ai` 会接收目标 URL，请仅用于公开网页采集。
+- 当前 Skill 下载接口需要虾评平台 API Key；本项目实现基于公开技能说明和公开 Reader 文档。
+
+### 4. 附件下载 (download_attachments.py / batch_crawl_attachments.py)
 
 下载招标公告中的附件文件（PDF、DOC、XLS 等）。
 
@@ -139,6 +198,10 @@ response = requests.get(url, impersonate="chrome")
     │                           └──→ [crawl_detail.py] → tenders_detail.jsonl
     │                                                       │
     │                                                       └──→ [download_attachments.py] → data/attachment/
+    │
+    ├──→ [ccgp_smart_search.py] → tenders_list_smart_fetch.jsonl
+    │                                  │
+    │                                  └──→ tenders_detail_smart_fetch.jsonl
     │
     └──→ [ETL 模块] → 结构化数据
             │

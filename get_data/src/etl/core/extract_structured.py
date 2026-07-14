@@ -32,13 +32,20 @@ from config import (
     ETL_OUTPUT_DIR,
 )
 from utils.logger import setup_logger
-from crawler.crawl_detail import _canonical_detail_url
 from utils.jsonl_helper import load_jsonl, save_jsonl, save_jsonl_single
+
+try:
+    from crawler.crawl_detail import _canonical_detail_url
+except Exception:
+    def _canonical_detail_url(url):
+        """轻量 fallback：避免纯抽取/测试场景强依赖详情爬虫依赖项。"""
+        value = (url or "").strip()
+        return value or None
 
 
 def _extract_llm_provider() -> str:
-    """结构化抽取使用的 LLM 提供商键（config.LLM_PROVIDERS）。默认 deepseek官方 API。"""
-    return os.environ.get("EXTRACT_LLM_PROVIDER", "deepseek").strip().lower()
+    """结构化抽取使用的 LLM 提供商键（config.LLM_PROVIDERS）。默认 minimax API。"""
+    return os.environ.get("EXTRACT_LLM_PROVIDER", "minimax").strip().lower()
 
 
 # 初始化日志
@@ -287,6 +294,28 @@ def _attachments_to_llm_field(attachments) -> str:
     return json.dumps(urls, ensure_ascii=False)
 
 
+def _load_detail_records(json_path: str) -> list:
+    """读取详情文件，兼容 JSON 数组和 JSONL。"""
+    if str(json_path).lower().endswith(".jsonl"):
+        return load_jsonl(json_path)
+
+    with open(json_path, "r", encoding="utf-8") as f:
+        try:
+            raw = json.load(f)
+        except json.JSONDecodeError:
+            f.seek(0)
+            records = []
+            for line in f:
+                line = line.strip()
+                if line:
+                    records.append(json.loads(line))
+            return records
+
+    if not isinstance(raw, list):
+        raise ValueError(f"期望 JSON 数组或 JSONL，得到：{type(raw).__name__}")
+    return raw
+
+
 def _load_rows_from_detail_json(json_path: str, limit: int | None):
     """从 tenders_detail.json 等爬虫产物加载行，不访问数据库。
 
@@ -296,10 +325,7 @@ def _load_rows_from_detail_json(json_path: str, limit: int | None):
     path = os.path.abspath(json_path)
     if not os.path.isfile(path):
         raise FileNotFoundError(f"详情 JSON 不存在：{path}")
-    with open(path, "r", encoding="utf-8") as f:
-        raw = json.load(f)
-    if not isinstance(raw, list):
-        raise ValueError(f"期望 JSON 数组，得到：{type(raw).__name__}")
+    raw = _load_detail_records(path)
     rows = []
     seen_canon: set[str] = set()
     skipped_dup = 0
@@ -616,7 +642,7 @@ def main():
         const='',
         default=None,
         metavar='PATH',
-        help='从爬虫详情 JSON 读取并抽取；省略 PATH 时用 crawler/tenders_detail.json',
+        help='从爬虫详情 JSON/JSONL 读取并抽取；省略 PATH 时用 data/output/crawler/tenders_detail.jsonl',
     )
 
     args = parser.parse_args()
@@ -633,8 +659,8 @@ def main():
 
     use_llm = not args.no_llm
 
-    # 默认从爬虫详情 JSON 读取
-    input_json_path = str(CRAWLER_OUTPUT_DIR / 'tenders_detail.json')
+    # 默认从爬虫详情 JSONL 读取
+    input_json_path = str(CRAWLER_OUTPUT_DIR / 'tenders_detail.jsonl')
     
     if args.from_json is not None:
         if args.from_json != '':

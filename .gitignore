@@ -31,12 +31,24 @@ ENV/
 .cursor/
 
 # Project Specific
-*.db
 *.sqlite3
-# get_data/data/output/
-# get_data/data/*.json
-!get_data/data/product.json
-# get_data/data/index/
 *.log
 .env
 .claude/
+.codebuddy/
+
+# 备份文件（含真实数据，禁止上传）
+*.bak
+*.xlsx.bak
+*.jsonl.bak
+
+# 附件和缓存（体积大，不需要在 Railway 上部署）
+get_data/data/attachment/
+get_data/data/html/
+get_data/logs/
+browser_screenshots/
+
+# 测试
+get_data/tests/
+test_*.py
+*_test.py

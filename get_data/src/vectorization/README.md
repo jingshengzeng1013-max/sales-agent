@@ -8,8 +8,7 @@
 src/vectorization/
 ├── vectorize_data.py   # 文本向量化（调用 Embedding API）
 ├── build_index.py      # 构建 FAISS 索引和 BM25 索引
-├── repair_ids.py       # 修复 ID 映射文件
-└── test_search.py      # 检索测试脚本
+└── __init__.py
 ```
 
 ## 核心功能
@@ -22,9 +21,9 @@ src/vectorization/
 
 ```python
 EMBEDDING_CONFIG = {
-    "base_url": "http://10.210.10.51:8022/v1",
-    "model": "/models/Qwen3-Embedding-0.6B",
-    "dimension": 1024,
+    "base_url": os.environ.get("EMBEDDING_BASE_URL", "..."),
+    "model": os.environ.get("EMBEDDING_MODEL", "..."),
+    "dimension": int(os.environ.get("EMBEDDING_DIMENSION", "1024")),
 }
 ```
 
@@ -37,8 +36,10 @@ python src/vectorization/vectorize_data.py --type tender
 # 向量化产品数据
 python src/vectorization/vectorize_data.py --type product
 
-# 指定输入文件
-python src/vectorization/vectorize_data.py --type tender --input data/output/etl/tenders_structured.jsonl
+# 指定输入/输出文件
+python src/vectorization/vectorize_data.py --type tender \
+  --tender-input data/output/etl/tenders_structured.jsonl \
+  --tender-output data/embedding/tenders_embedded.jsonl
 ```
 
 **输出文件**：
@@ -74,8 +75,8 @@ python src/vectorization/build_index.py --type all
 
 ```bash
 # 1. 结构化数据（ETL 模块）
-python src/etl/extract_structured.py --all
-python src/etl/import_structured_db.py
+python src/etl/core/extract_structured.py --all --provider local --from-json data/output/crawler/tenders_detail.jsonl
+python src/storage/import_structured.py --json data/output/etl/tenders_structured.jsonl --mode replace
 
 # 2. 向量化
 python src/vectorization/vectorize_data.py --type tender
@@ -119,6 +120,6 @@ curl http://10.210.10.51:8022/v1/models
 
 **Q: 索引构建后检索结果为空**
 ```bash
-# 修复 ID 映射
-python src/vectorization/repair_ids.py --type tender
+# 重新构建 ID 映射
+python src/vectorization/build_index.py --type tender
 ```

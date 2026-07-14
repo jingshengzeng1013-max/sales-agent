@@ -1093,7 +1093,7 @@
         o.textContent = ok ? p.label : p.label + "（未配置或未就绪）";
         sel.appendChild(o);
       });
-      const def = data.default_provider || "deepseek";
+      const def = data.default_provider || "minimax";
       if ([...sel.options].some((opt) => opt.value === def)) {
         sel.value = def;
       } else {
@@ -1276,10 +1276,12 @@
       const el = document.getElementById(id);
       if (el && v !== undefined && v !== null) el.value = v;
     };
+    set("crawl-fetch-backend", d.fetch_backend);
     set("crawl-keyword", d.keyword);
     set("crawl-base-url", d.base_url);
     set("crawl-delay-min", d.delay_min);
     set("crawl-delay-max", d.delay_max);
+    set("crawl-page-index", d.page_index);
     set("crawl-max-pages", d.max_pages);
     set("crawl-timeout", d.timeout);
     set("crawl-searchtype", d.searchtype);
@@ -1291,7 +1293,9 @@
     set("crawl-detail-dmin", d.detail_delay_min);
     set("crawl-detail-dmax", d.detail_delay_max);
     set("crawl-detail-timeout", d.detail_timeout);
+    set("crawl-detail-workers", d.detail_workers);
     set("crawl-json-path", d.json_path || "");
+    document.getElementById("crawl-include-browser").checked = !!d.include_browser;
     document.getElementById("crawl-run-list").checked = !!d.run_list;
     document.getElementById("crawl-run-import").checked = !!d.run_import;
     document.getElementById("crawl-run-detail").checked = !!d.run_detail;
@@ -1398,10 +1402,13 @@
       return Number.isFinite(n) ? n : fallback;
     };
     const body = {
+      fetch_backend: document.getElementById("crawl-fetch-backend").value,
+      include_browser: document.getElementById("crawl-include-browser").checked,
       keyword: document.getElementById("crawl-keyword").value.trim(),
       base_url: document.getElementById("crawl-base-url").value.trim(),
       delay_min: num("crawl-delay-min", 2),
       delay_max: num("crawl-delay-max", 5),
+      page_index: num("crawl-page-index", 1),
       max_pages: num("crawl-max-pages", 3),
       timeout: num("crawl-timeout", 30),
       searchtype: document.getElementById("crawl-searchtype").value.trim(),
@@ -1413,6 +1420,7 @@
       detail_delay_min: num("crawl-detail-dmin", 2),
       detail_delay_max: num("crawl-detail-dmax", 5),
       detail_timeout: num("crawl-detail-timeout", 30),
+      detail_workers: num("crawl-detail-workers", 2),
       run_list: document.getElementById("crawl-run-list").checked,
       run_import: document.getElementById("crawl-run-import").checked,
       run_detail: document.getElementById("crawl-run-detail").checked,

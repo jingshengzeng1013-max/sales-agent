@@ -1,0 +1,24 @@
+[Unit]
+Description=Sales Agent FastAPI Server (销售情报系统)
+After=network.target
+
+[Service]
+Type=simple
+User=sylincom
+Group=sylincom
+WorkingDirectory=/home/sylincom/sales-agent/get_data
+Environment=PATH=/home/sylincom/miniconda3/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/sylincom/miniconda3/bin/uvicorn webapp.server_fastapi:app --host 0.0.0.0 --port 8103 --workers 1 --log-level info
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5
+StandardOutput=append:/home/sylincom/sales-agent/get_data/logs/api_server/server_fastapi_stdout.log
+StandardError=append:/home/sylincom/sales-agent/get_data/logs/api_server/server_fastapi_stderr.log
+
+# 安全与资源限制
+LimitNOFILE=65536
+TimeoutStartSec=120
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

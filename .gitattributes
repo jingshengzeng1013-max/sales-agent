@@ -1,0 +1,3 @@
+# 大文件标记（SQLite 数据库 37MB，无需 LFS）
+*.db binary
+*.jsonl binary

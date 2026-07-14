@@ -47,11 +47,12 @@ pip install -r requirements.txt
 
 | 步骤 | 命令 | 说明 | 耗时 |
 |:---|:---|:---|:---|
-| **1. 初始化** | `python src/utils/reset_db.py` | 清空并重置本地 SQLite 数据库 | < 1min |
+| **1. 初始化** | `python src/storage/cli.py init` | 初始化本地 SQLite 数据库表结构 | < 1min |
 | **2. 采集数据** | `python src/crawler/ccgp_crawler.py`<br>`python src/crawler/crawl_detail.py` | 爬取列表页及详情页内容，绕过反爬机制 | 10-20min |
-| **3. AI 结构化** | `python src/etl/core/extract_structured.py --all` | 调用 DeepSeek 提取预算、关键词、联系人等 | 视数据量 |
+| **2a. 兜底采集** | `python src/crawler/ccgp_smart_fetch.py --max-items 50 --print-items`<br>`python src/crawler/ccgp_smart_search.py --keyword 通信 --pages 1 --crawl-details --detail-limit 3` | 使用 Smart Web Fetch 五层降级链抓取 CCGP 首页链接，或按“采购公告 + 搜全文”采集列表和详情 | < 1min |
+| **3. AI 结构化** | `python src/etl/core/extract_structured.py --all --provider local --from-json data/output/crawler/tenders_detail.jsonl` | 调用 LLM 提取预算、关键词、联系人等 | 视数据量 |
 | **4. 项目聚合** | `python src/etl/aggregate_projects.py` | 将散乱公告聚合为完整项目卡片 | < 2min |
-| **5. 构建索引** | `python src/vectorization/vectorize_data.py`<br>`python src/vectorization/build_index.py` | 生成向量嵌入并构建 FAISS/BM25 索引 | 5-10min |
+| **5. 构建索引** | `python src/vectorization/vectorize_data.py --type all`<br>`python src/vectorization/build_index.py --type all` | 生成向量嵌入并构建 FAISS/BM25 索引 | 5-10min |
 
 ### 3. 启动搜索服务
 
@@ -68,7 +69,7 @@ python webapp/server_fastapi.py
 ## 📂 项目结构
 
 ```text
-D:\sales_agent\get_data\
+sales-agent/get_data/
 ├── src/
 │   ├── crawler/            # 爬虫：支持列表、详情、附件采集
 │   ├── etl/                # 数据处理：LLM 抽取、项目聚合、附件解析
@@ -77,7 +78,7 @@ D:\sales_agent\get_data\
 │   ├── analysis/           # 分析：AI 销售建议、客户画像生成
 │   ├── storage/            # 存储：数据库操作、JSONL 读写
 │   ├── utils/              # 工具：通用辅助函数
-│   └── config.py           # 全局配置：API Key、关键词、数据库路径
+│   └── config.py           # 全局配置：路径、关键词、模型与环境变量
 ├── webapp/                 # Web 服务：FastAPI 接口与前端静态页面
 │   ├── server_fastapi.py   # 后端主服务
 │   └── static/             # 前端：demo.html (Tailwind CSS 驱动)
@@ -85,6 +86,35 @@ D:\sales_agent\get_data\
 ├── docs/                   # 项目文档
 └── requirements.txt        # 依赖清单
 ```
+
+### Smart Web Fetch 采集栈
+
+当传统 `curl_cffi + 代理池` 列表页抓取失败时，可使用新增的 Smart Web Fetch 兜底采集链：
+
+```bash
+python src/crawler/ccgp_smart_fetch.py --max-items 50 --print-items
+
+python src/crawler/ccgp_smart_search.py \
+  --keyword 通信 \
+  --pages 1 \
+  --crawl-details \
+  --detail-limit 3 \
+  --print-items
+
+python src/crawler/ccgp_smart_search.py \
+  --search-url "https://search.ccgp.gov.cn/bxsearch?searchtype=2&page_index=1&start_time=&end_time=&timeType=2&searchparam=&searchchannel=0&dbselect=bidx&kw=%E9%80%9A%E4%BF%A1&bidSort=0&pinMu=0&bidType=0&buyerName=&projectId=&displayZone=&zoneId=&agentName=" \
+  --crawl-details \
+  --detail-limit 3 \
+  --print-items
+```
+
+降级顺序来自虾评 Skill「Smart Web Fetch」公开说明：
+`markdown.new` → `defuddle.md` → `r.jina.ai` → `Scrapling` → `Playwright`。
+
+默认输出：
+- `data/output/crawler/ccgp_home_smart_fetch.jsonl`：首页链接采集结果
+- `data/output/crawler/tenders_list_smart_fetch.jsonl`：采购公告搜索列表
+- `data/output/crawler/tenders_detail_smart_fetch.jsonl`：详情页正文解析结果
 
 ---
 
@@ -108,4 +138,4 @@ D:\sales_agent\get_data\
 - [DeepSeek 结构化抽取报告](docs/02_RAG 方案/DeepSeek 结构化抽取报告.md)
 
 ---
-*Last Updated: 2026-04-16*
+*Last Updated: 2026-04-29*

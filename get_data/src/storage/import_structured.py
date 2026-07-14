@@ -15,7 +15,7 @@ root_dir = Path(__file__).resolve().parents[2]
 if str(root_dir) not in sys.path:
     sys.path.append(str(root_dir))
 
-from src.config import DB_PATH
+from src.config import DB_PATH, ETL_OUTPUT_DIR
 from src.utils.jsonl_helper import load_jsonl
 
 import uuid
@@ -234,11 +234,11 @@ def import_structured_tenders(jsonl_path: str, mode: str = 'append'):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="导入结构化标讯数据到数据库")
-    parser.add_argument("--json", type=str, help="结构化 JSON 文件路径")
+    parser.add_argument("--json", type=str, help="结构化 JSON/JSONL 文件路径")
     parser.add_argument("--mode", type=str, choices=['append', 'replace'], default='replace', 
                         help="导入模式: append (跳过已存在) 或 replace (覆盖已存在)")
     
     args = parser.parse_args()
     
-    json_path = args.json or "D:/sales_agent/get_data/data/output/etl/tenders_structured.json"
+    json_path = args.json or str(ETL_OUTPUT_DIR / "tenders_structured.jsonl")
     import_structured_tenders(json_path, mode=args.mode)

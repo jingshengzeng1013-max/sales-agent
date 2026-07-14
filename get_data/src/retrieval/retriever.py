@@ -127,52 +127,90 @@ class DualRetriever:
                 })
         return results
 
-    def hybrid_search(self, query_text: str, top_k: int = 10, query_vector: np.ndarray = None, 
+    def _matches_filters(
+        self,
+        item: Dict[str, Any],
+        province: str = None,
+        city: str = None,
+        notice_type: str = None,
+    ) -> bool:
+        """统一处理检索前置筛选，避免两路召回逻辑不一致。"""
+        if province and province not in (item.get('province') or ''):
+            return False
+        if city and city not in (item.get('city') or ''):
+            return False
+        if notice_type:
+            haystack = " ".join([
+                str(item.get('project_name') or ''),
+                str(item.get('announce_type') or ''),
+                str(item.get('notice_type') or ''),
+            ])
+            if notice_type not in haystack:
+                return False
+        return True
+
+    def hybrid_search(self, query_text: str, top_k: int = 10, query_vector: np.ndarray = None,
+                      use_vector: bool = True, use_bm25: bool = True,
                       vector_weight: float = 0.5, bm25_weight: float = 0.5,
-                      province: str = None, notice_type: str = None,
+                      province: str = None, city: str = None, notice_type: str = None,
                       aggregate_by_project: bool = True,
                       exclude_won: bool = False,
                       sort_by: str = "score",
                       client_value_weight: float = 0.0) -> List[Dict]:
         """
         双路检索 + RRF (Reciprocal Rank Fusion) 融合
+        :param use_vector: 是否启用向量检索
+        :param use_bm25: 是否启用 BM25 关键词检索
         :param vector_weight: 向量检索权重 (0-1)
         :param bm25_weight: BM25 检索权重 (0-1)
         :param province: 地区筛选
+        :param city: 城市筛选
         :param notice_type: 公告类型筛选 (招标/中标/...)
         :param aggregate_by_project: 是否按项目汇总显示
         :param exclude_won: 是否排除已中标项目
         :param sort_by: 排序方式 ("score" 或 "date")
         :param client_value_weight: 客户价值权重 (0-1)，基于客户历史平均分进行加权
         """
-        # 1. 向量检索
-        if query_vector is None:
-            query_vector = np.array(self.vectorizer.get_embeddings([query_text])).astype('float32')
-        
-        faiss.normalize_L2(query_vector)
         # 扩大候选集以支持后续筛选和汇总
-        search_k = top_k * 50 if (province or notice_type or aggregate_by_project) else top_k * 5
-        distances, indices = self.index.search(query_vector, search_k)
-        
+        search_k = max(1, top_k) * 50 if (province or city or notice_type or aggregate_by_project) else max(1, top_k) * 5
+
+        if not use_vector and not use_bm25:
+            return []
+
+        # 1. 向量检索
         v_results_dict = {}
-        for i in range(len(indices[0])):
-            idx = indices[0][i]
-            score = float(distances[0][i])
-            if idx < len(self.ids):
-                item_id = self.ids[idx]
-                # 预筛选逻辑
-                item = self.data_dict.get(item_id)
-                if not item: continue
-                
-                if province and province not in item.get('province', ''): continue
-                if notice_type and notice_type not in item.get('project_name', ''): continue
-                
-                v_results_dict[item_id] = {"rank": len(v_results_dict), "score": score}
-                if len(v_results_dict) >= search_k: break
+        if use_vector:
+            if self.index is None:
+                logger.warning("向量检索已启用，但 FAISS 索引未加载")
+            else:
+                if query_vector is None:
+                    if self.vectorizer is None:
+                        logger.warning("向量检索已启用，但 vectorizer 未初始化")
+                    else:
+                        query_vector = np.array(self.vectorizer.get_embeddings([query_text])).astype('float32')
+
+                if query_vector is not None:
+                    faiss.normalize_L2(query_vector)
+                    distances, indices = self.index.search(query_vector, search_k)
+
+                    for i in range(len(indices[0])):
+                        idx = indices[0][i]
+                        score = float(distances[0][i])
+                        if idx < len(self.ids):
+                            item_id = self.ids[idx]
+                            item = self.data_dict.get(item_id)
+                            if not item:
+                                continue
+                            if not self._matches_filters(item, province=province, city=city, notice_type=notice_type):
+                                continue
+
+                            v_results_dict[item_id] = {"rank": len(v_results_dict), "score": score}
+                            if len(v_results_dict) >= search_k:
+                                break
 
         # 2. BM25 检索
         b_results_dict = {}
-        if self.bm25:
+        if use_bm25 and self.bm25:
             query_words = list(jieba.cut(query_text))
             bm25_scores = self.bm25.get_scores(query_words)
             top_b_indices = np.argsort(bm25_scores)[::-1]
@@ -188,10 +226,8 @@ class DualRetriever:
                 item = self.raw_data[idx]
                 item_id = str(item.get('uuid') or item.get('id') or item.get('project_id') or "")
                 if not item_id: continue
-                
-                # 预筛选逻辑
-                if province and province not in item.get('province', ''): continue
-                if notice_type and notice_type not in item.get('project_name', ''): continue
+                if not self._matches_filters(item, province=province, city=city, notice_type=notice_type):
+                    continue
                 
                 b_results_dict[item_id] = {
                     "rank": count, 

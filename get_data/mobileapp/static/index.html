@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="api-port" content="8103" />
+    <title>销售情报</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="app-header">
+        <button class="icon-button" type="button" id="header-back" aria-label="返回">‹</button>
+        <div>
+          <p class="brand">销售情报</p>
+          <h1>客户匹配</h1>
+        </div>
+        <span class="header-dot" aria-hidden="true"></span>
+      </header>
+
+      <main>
+        <section class="view active" id="search-view">
+          <form class="search-panel" id="search-form">
+            <label class="field field-wide" for="product-select">
+              <span>产品</span>
+              <select id="product-select" required>
+                <option value="">加载产品中...</option>
+              </select>
+            </label>
+
+            <div class="field-grid">
+              <label class="field" for="province-select">
+                <span>地区</span>
+                <select id="province-select">
+                  <option value="">全部地区</option>
+                </select>
+              </label>
+
+              <label class="field" for="notice-type-select">
+                <span>公告类型</span>
+                <select id="notice-type-select">
+                  <option value="">全部公告</option>
+                </select>
+              </label>
+            </div>
+
+            <label class="field" for="top-k-select">
+              <span>返回条数</span>
+              <select id="top-k-select">
+                <option value="10">10 条</option>
+                <option value="20" selected>20 条</option>
+                <option value="50">50 条</option>
+                <option value="100">100 条</option>
+              </select>
+            </label>
+
+            <button class="primary-button" id="search-button" type="submit">检索</button>
+          </form>
+
+          <section class="result-summary" id="result-summary" hidden>
+            <div>
+              <span>匹配客户</span>
+              <strong id="summary-count">0</strong>
+            </div>
+            <p id="summary-product"></p>
+          </section>
+
+          <div class="status-line" id="status-line"></div>
+          <section class="results-list" id="results-list"></section>
+        </section>
+
+        <section class="view" id="detail-view">
+          <div class="detail-top">
+            <button class="back-button" id="detail-back" type="button">返回</button>
+            <span id="detail-score"></span>
+          </div>
+          <article id="detail-content"></article>
+        </section>
+      </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
+

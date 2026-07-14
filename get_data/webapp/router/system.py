@@ -18,6 +18,11 @@ def api_llm_options() -> dict[str, Any]:
 
     # 各 provider 的推荐模型列表
     MODEL_RECOMMENDATIONS = {
+        "minimax": [
+            {"id": "MiniMax-M3", "name": "MiniMax-M3"},
+            {"id": "MiniMax-M1", "name": "MiniMax-M1"},
+            {"id": "abab6.5s-chat", "name": "ABAB 6.5s"},
+        ],
         "deepseek": [
             {"id": "deepseek-chat", "name": "DeepSeek Chat (V3)"},
             {"id": "deepseek-reasoner", "name": "DeepSeek Reasoner (R1)"},
@@ -62,6 +67,7 @@ def api_llm_options() -> dict[str, Any]:
         }
 
     providers = [
+        row("minimax", "MiniMax API", "api", getattr(cfg, "MINIMAX_CONFIG", {}), "MINIMAX_API_KEY"),
         row("deepseek", "DeepSeek API", "api", getattr(cfg, "DEEPSEEK_CONFIG", {}), "DEEPSEEK_API_KEY"),
         row(
             "qwen",
@@ -79,4 +85,4 @@ def api_llm_options() -> dict[str, Any]:
         ),
         row("doubao", "豆包（火山引擎 Ark）", "api", getattr(cfg, "DOUBAO_CONFIG", {}), "ARK_API_KEY"),
     ]
-    return {"ok": True, "default_provider": getattr(cfg, "DEFAULT_PROVIDER", "deepseek"), "providers": providers}
+    return {"ok": True, "default_provider": getattr(cfg, "DEFAULT_PROVIDER", "minimax"), "providers": providers}

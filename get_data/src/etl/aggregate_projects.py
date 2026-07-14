@@ -10,6 +10,7 @@ from pathlib import Path
 project_root = Path(__file__).resolve().parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
+from src.config import CRAWLER_OUTPUT_DIR, ETL_OUTPUT_DIR, CUSTOMER_OUTPUT_DIR
 from src.utils.jsonl_helper import load_jsonl, save_jsonl
 
 def normalize_project_name(name):
@@ -181,9 +182,42 @@ def aggregate_projects(structured_file, detail_file, output_file, profile_file=N
     save_jsonl(aggregated_projects, output_file)
     print(f"Successfully aggregated {len(aggregated_projects)} projects into {output_file}")
 
+def build_arg_parser():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="聚合同一项目的招标/中标/更正等公告")
+    parser.add_argument(
+        "--structured-file",
+        default=str(ETL_OUTPUT_DIR / "tenders_structured.jsonl"),
+        help="结构化标讯 JSONL 路径",
+    )
+    parser.add_argument(
+        "--detail-file",
+        default=str(CRAWLER_OUTPUT_DIR / "tenders_detail.jsonl"),
+        help="详情爬虫 JSONL 路径",
+    )
+    parser.add_argument(
+        "--output-file",
+        default=str(ETL_OUTPUT_DIR / "projects_aggregated.jsonl"),
+        help="项目聚合输出 JSONL 路径",
+    )
+    parser.add_argument(
+        "--profile-file",
+        default=str(CUSTOMER_OUTPUT_DIR / "customer_profiles.jsonl"),
+        help="客户画像 JSONL 路径；文件不存在时自动跳过画像摘要",
+    )
+    return parser
+
+
+def main(argv=None):
+    args = build_arg_parser().parse_args(argv)
+    aggregate_projects(
+        args.structured_file,
+        args.detail_file,
+        args.output_file,
+        args.profile_file,
+    )
+
+
 if __name__ == "__main__":
-    input_path = r"D:\sales_agent\get_data\data\output\etl\tenders_structured.jsonl"
-    detail_path = r"D:\sales_agent\get_data\data\output\crawler\tenders_detail.jsonl"
-    output_path = r"D:\sales_agent\get_data\data\output\etl\projects_aggregated.jsonl"
-    profile_path = r"D:\sales_agent\get_data\data\output\customer\customer_profiles.jsonl"
-    aggregate_projects(input_path, detail_path, output_path, profile_path)
+    main()

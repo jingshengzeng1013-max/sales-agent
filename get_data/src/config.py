@@ -8,7 +8,9 @@ import os
 from pathlib import Path
 
 # 项目根目录
-BASE_DIR = Path("D:/sales_agent/get_data")
+BASE_DIR = Path(
+    os.environ.get("SALES_AGENT_BASE_DIR", Path(__file__).resolve().parents[1])
+).resolve()
 
 # 数据目录
 DATA_DIR = BASE_DIR / "data"
@@ -23,7 +25,7 @@ DB_PATH = DATA_DIR / "ccgp_data.db"
 # 文档：https://help.aliyun.com/zh/dashscope/
 # 北京地域 base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
 DASHSCOPE_CONFIG = {
-    "api_key": "",  # 填入阿里云 API Key（从环境变量 DASHSCOPE_API_KEY 获取）
+    "api_key": os.environ.get("DASHSCOPE_API_KEY", ""),
     "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
     "model": "qwen3.5-plus",  # 通义千问 3.5 Plus
     "timeout": 120,
@@ -35,7 +37,7 @@ DASHSCOPE_CONFIG = {
 # 输入（缓存未命中）：2 元/1M tokens
 # 输出：3 元/1M tokens
 DEEPSEEK_CONFIG = {
-    "api_key": "sk-e9a318f595e0419a94c255f3154eb1cf",  # 填入 DeepSeek API Key
+    "api_key": os.environ.get("DEEPSEEK_API_KEY", ""),
     "base_url": "https://api.deepseek.com/v1",
     "model": "deepseek-chat",
     "timeout": 120,
@@ -50,9 +52,21 @@ DEEPSEEK_CONFIG = {
 # 字节跳动豆包配置（Volcengine Ark）
 # 定价参考：https://www.volcengine.com/docs/82379/1099320
 DOUBAO_CONFIG = {
-    "api_key": "",  # 填入 Volcengine API Key（从环境变量 ARK_API_KEY 获取）
+    "api_key": os.environ.get("ARK_API_KEY", ""),
     "base_url": "https://ark.cn-beijing.volces.com/api/v3",
     "model": "doubao-seed-2-0-lite-260215",  # 豆包 Seed 2.0 Lite
+    "timeout": 120,
+}
+
+# MiniMax 配置（OpenAI 兼容接口）
+# 文档：https://platform.minimaxi.com/
+MINIMAX_CONFIG = {
+    "api_key": os.environ.get(
+        "MINIMAX_API_KEY",
+        "sk-cp-LZO4GoGvZw9DCgU56jHlFQfVIMHgm83qTJd-R18FYoL3GQobK4zCHwfH4X2zf_s1BZR7Wxo8UZPOzRsa_W6qeBppI2eGWYbUQtAI55gVZ0RUncQMRMg2JwM",
+    ),
+    "base_url": "https://api.minimaxi.com/v1",
+    "model": "MiniMax-M3",
     "timeout": 120,
 }
 
@@ -60,9 +74,9 @@ DOUBAO_CONFIG = {
 LOCAL_LLM_CONFIG = {
     "api_key": os.environ.get("LOCAL_LLM_API_KEY", "local-api-key"),
     "base_url": os.environ.get(
-        "LOCAL_LLM_BASE_URL", "http://10.210.10.51:8002/v1"
+        "LOCAL_LLM_BASE_URL", "http://10.210.10.51:8001/v1"
     ).rstrip("/"),
-    "model": os.environ.get("LOCAL_LLM_MODEL", "/models/Kimi-K2.5"),
+    "model": os.environ.get("LOCAL_LLM_MODEL", "/models/Qwen3.5-27B"),
     "timeout": int(os.environ.get("LOCAL_LLM_TIMEOUT", "600")),
 }
 
@@ -73,6 +87,11 @@ LOCAL_LLM_CONFIG = {
 
 # 所有模型配置映射（可通过模型名称获取配置）
 LLM_PROVIDERS = {
+    "minimax": {
+        "name": "MiniMax",
+        "config": MINIMAX_CONFIG,
+        "env_key": "MINIMAX_API_KEY",
+    },
     "local": {
         "name": "Local OpenAI-compatible",
         "config": LOCAL_LLM_CONFIG,
@@ -81,12 +100,12 @@ LLM_PROVIDERS = {
     "deepseek": {
         "name": "DeepSeek",
         "config": DEEPSEEK_CONFIG,
-        "env_key": None,  # 已硬编码 API Key
+        "env_key": "DEEPSEEK_API_KEY",
     },
 }
 
-# 默认使用的模型提供商（可用环境变量 LLM_PROVIDER=deepseek 切换）
-DEFAULT_PROVIDER = os.environ.get("LLM_PROVIDER", "local")
+# 默认使用的模型提供商（可用环境变量 LLM_PROVIDER=minimax 切换）
+DEFAULT_PROVIDER = os.environ.get("LLM_PROVIDER", "minimax")
 
 
 def get_llm_config(provider=None):
@@ -114,21 +133,26 @@ def get_llm_config(provider=None):
 
 
 # 爬虫配置
+_proxy_api_url = os.environ.get("QG_PROXY_API_URL", "")
+_proxy_user = os.environ.get("QG_PROXY_USER", "")
+_proxy_password = os.environ.get("QG_PROXY_PASSWORD", "")
+_default_use_proxy = "true" if _proxy_api_url else "false"
+
 CRAWLER_CONFIG = {
     "base_url": "https://search.ccgp.gov.cn/bxsearch",
     "keyword": "通信",
     "delay_min": 0.5,
     "delay_max": 1.5,
-    "page_index": 100,          # 起始页码
+    "page_index": 1,          # 起始页码
     "max_pages": 100,         # 爬取页数（0表示爬取所有，直到翻不动为止）
     "timeout": 10,            # 全局默认超时
     # 代理配置
-    "use_proxy": True,
-    "proxy_api_url": "https://share.proxy.qg.net/get?key=F8ECD839&num=5&area=&isp=0&format=txt&seq=\r\n&distinct=false", # 一次提取10个
-    "proxy_num": 5,   # 提取数量
-    "proxy_ttl": 60,  # 代理 IP 有效期（秒）
-    "proxy_user": "F8ECD839",      # 账密模式：Key
-    "proxy_password": "0FC399C64B0C",          # 账密模式：AuthPwd (请在此填入您的授权密码)
+    "use_proxy": os.environ.get("CRAWLER_USE_PROXY", _default_use_proxy).lower() in {"1", "true", "yes", "on"},
+    "proxy_api_url": _proxy_api_url,
+    "proxy_num": int(os.environ.get("QG_PROXY_NUM", "5")),
+    "proxy_ttl": int(os.environ.get("QG_PROXY_TTL", "60")),
+    "proxy_user": _proxy_user,
+    "proxy_password": _proxy_password,
     # URL 参数配置
     "searchtype": "2",        # 搜索类型：1=标题，2=全文
     "bidSort": "0",           # 排序方式：0=时间，1=相关性
@@ -192,9 +216,9 @@ QWEN_CONFIG = {
 
 # Embedding API 配置（用于向量检索）
 EMBEDDING_CONFIG = {
-    "base_url": "http://10.210.10.51:8022/v1",  # 本地 Embedding 服务地址
-    "model": "/models/Qwen3-Embedding-0.6B",
-    "dimension": 1024,
+    "base_url": os.environ.get("EMBEDDING_BASE_URL", "http://10.210.10.51:8022/v1").rstrip("/"),
+    "model": os.environ.get("EMBEDDING_MODEL", "/models/Qwen3-Embedding-0.6B"),
+    "dimension": int(os.environ.get("EMBEDDING_DIMENSION", "1024")),
 }
 
 # 向量检索索引目录

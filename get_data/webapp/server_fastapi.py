@@ -56,6 +56,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 模块化路由：当前完整版 index.html 的爬虫面板依赖这些接口。
+from webapp.router.crawl import router as crawl_router
+
+app.include_router(crawl_router)
+
 # 初始化检索器
 logger.info("正在初始化双路检索器...")
 product_retriever = DualRetriever(data_type="product")
@@ -147,6 +152,8 @@ async def search_tenders(req: SearchTendersRequest):
         query_text, 
         top_k=req.top_k, 
         query_vector=query_vector,
+        use_vector=req.use_vector,
+        use_bm25=req.use_bm25,
         vector_weight=req.vector_weight,
         bm25_weight=req.bm25_weight,
         province=req.province,
@@ -782,10 +789,11 @@ if __name__ == '__main__':
         return ip
     
     host_ip = get_host_ip()
-    port = 8103
+    # Railway/Render 等平台通过 PORT 环境变量指定端口
+    port = int(os.environ.get("PORT", 8103))
 
-    # 自动清理端口
-    if os.name == 'nt':  # Windows
+    # 自动清理端口（仅 Windows 本地开发时）
+    if os.name == 'nt':
         try:
             output = subprocess.check_output(f'netstat -ano | findstr :{port}', shell=True).decode()
             for line in output.strip().split('\n'):

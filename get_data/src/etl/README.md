@@ -5,18 +5,15 @@
 ```
 src/etl/
 ├── 核心抽取/
-│   ├── extract_structured.py    # LLM 结构化字段抽取（主流程）
-│   ├── import_structured_db.py  # 导入结构化数据到数据库
-│   └── prompt_extract.md        # LLM 抽取 Prompt 模板
+│   ├── core/extract_structured.py    # LLM 结构化字段抽取（主流程）
+│   └── core/prompt_extract.md        # LLM 抽取 Prompt 模板
 │
 ├── RAG 分块/
-│   ├── generate_chunks.py       # 生成 tender_chunks 分块数据
-│   └── import_attachment_chunks.py  # 导入附件解析结果到 chunks
+│   ├── chunks/generate_chunks.py       # 生成 tender_chunks 分块数据
+│   └── chunks/import_attachment_chunks.py  # 导入附件解析结果到 chunks
 │
 ├── 附件处理/
-│   ├── run_attachment_pipeline.py  # 附件处理完整流程（一键执行）
-│   ├── parse_attachments.py     # 解析附件文件（PDF/DOC 等）
-│   └── parse_pages_with_llm.py  # 使用 LLM 解析详情页 HTML
+│   └── attachments/extract_attachment_specs.py  # 附件技术参数提取
 │
 └── 工具/
     └── llm_client.py            # LLM 客户端封装（阿里云/DeepSeek）
@@ -30,16 +27,16 @@ src/etl/
 
 | 文件 | 功能 | 输入 | 输出 |
 |------|------|------|------|
-| `extract_structured.py` | LLM 结构化字段抽取 | tenders 表 | `tenders_structured.json` |
-| `import_structured_db.py` | 导入结构化数据 | JSON 文件 | `tender_structured` 表 |
+| `core/extract_structured.py` | LLM 结构化字段抽取 | 详情 JSON/JSONL | `tenders_structured.jsonl` |
+| `src/storage/import_structured.py` | 导入结构化数据 | JSONL 文件 | `tender_structured` 表 |
 
 **典型用法**：
 ```bash
 # 抽取所有数据
-python src/etl/extract_structured.py --all --model deepseek-chat
+python src/etl/core/extract_structured.py --all --provider local --from-json data/output/crawler/tenders_detail.jsonl
 
 # 导入数据库
-python src/etl/import_structured_db.py --file output/tenders_structured.json
+python src/storage/import_structured.py --json data/output/etl/tenders_structured.jsonl --mode replace
 ```
 
 **抽取字段**：
@@ -69,10 +66,10 @@ python src/etl/import_structured_db.py --file output/tenders_structured.json
 **典型用法**：
 ```bash
 # 生成所有 chunks
-python src/etl/generate_chunks.py --all --replace
+python src/etl/chunks/generate_chunks.py --all --replace
 
 # 导入附件 chunks
-python src/etl/import_attachment_chunks.py --import
+python src/etl/chunks/import_attachment_chunks.py --import
 ```
 
 ---
@@ -81,22 +78,19 @@ python src/etl/import_attachment_chunks.py --import
 
 | 文件 | 功能 | 输入 | 输出 |
 |------|------|------|------|
-| `run_attachment_pipeline.py` | 一键执行完整流程 | - | 数据库 |
-| `parse_attachments.py` | 解析附件文件 | attachments/ | parsed_attachments/ |
-| `parse_pages_with_llm.py` | LLM 解析详情页 | tenders 表 | tenders 表 |
+| `attachments/extract_attachment_specs.py` | 提取附件技术参数 | `data/attachment/` | `data/output/attachment_specs/` |
 
 **完整流程**：
 ```bash
-# 一键执行（推荐）
-python src/etl/run_attachment_pipeline.py --verify
+# 1. 爬取链接并下载附件（crawler 模块）
+python src/crawler/batch_crawl_attachments.py
+python src/crawler/download_attachments.py
 
-# 分步执行
-# 1. 爬取链接（crawler 模块）
-# 2. 下载附件（crawler 模块）
-# 3. 解析附件
-python src/etl/parse_attachments.py
-# 4. 导入 chunks
-python src/etl/import_attachment_chunks.py --import
+# 2. 提取附件技术参数
+python src/etl/attachments/extract_attachment_specs.py --limit 20
+
+# 3. 导入附件 chunks
+python src/etl/chunks/import_attachment_chunks.py --import
 ```
 
 **支持格式**：PDF, DOC, DOCX, TXT, CSV, XLS, XLSX, ZIP 等
@@ -121,15 +115,12 @@ python src/etl/import_attachment_chunks.py --import
 ```
 tenders 表
     │
-    ├──→ [extract_structured.py] → tenders_structured.json → [import_structured_db.py] → tender_structured 表
+    ├──→ [core/extract_structured.py] → tenders_structured.jsonl → [storage/import_structured.py] → tender_structured 表
     │                                                                 ↓
     │                                                                 [generate_chunks.py] → tender_chunks 表
     │
-    └──→ [parse_pages_with_llm.py] → tenders 表 (content 字段增强)
-
 attachments/
-    │
-    └──→ [parse_attachments.py] → parsed_attachments/ → [import_attachment_chunks.py] → tender_chunks 表
+    └──→ [attachments/extract_attachment_specs.py] → attachment_specs.jsonl → [chunks/import_attachment_chunks.py] → tender_chunks 表
 ```
 
 ---
@@ -158,20 +149,20 @@ python src/crawler/ccgp_crawler.py
 python src/crawler/crawl_detail.py
 
 # 2. LLM 结构化抽取
-python src/etl/extract_structured.py --all --model deepseek-chat
+python src/etl/core/extract_structured.py --all --provider local --from-json data/output/crawler/tenders_detail.jsonl
 
 # 3. 导入数据库
-python src/etl/import_structured_db.py --file output/tenders_structured.json
+python src/storage/import_structured.py --json data/output/etl/tenders_structured.jsonl --mode replace
 
 # 4. 生成 RAG 分块
-python src/etl/generate_chunks.py --all --replace
+python src/etl/chunks/generate_chunks.py --all --replace
 ```
 
 ### 附件处理
 
 ```bash
-# 一键执行
-python src/etl/run_attachment_pipeline.py --verify
+# 附件技术参数提取
+python src/etl/attachments/extract_attachment_specs.py --limit 20
 ```
 
 ### 常用参数

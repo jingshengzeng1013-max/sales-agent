@@ -13,12 +13,18 @@ import sys
 import os
 import json
 import html
-from bs4 import BeautifulSoup
+try:
+    from bs4 import BeautifulSoup
+except ImportError:
+    BeautifulSoup = None
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse, urljoin, urlunparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from curl_cffi import requests as requests_cffi
+try:
+    from curl_cffi import requests as requests_cffi
+except ImportError:
+    requests_cffi = None
 from tqdm import tqdm
 
 # 项目根目录（get_data），保证与 src.config 一致
@@ -105,6 +111,8 @@ def _fetch_detail_single(
     max_retries = 2
     for attempt in range(max_retries):
         try:
+            if requests_cffi is None:
+                raise RuntimeError("缺少 curl_cffi 依赖，请先安装 requirements.txt")
             # 轻微错开多线程同时打第一包
             time.sleep(random.uniform(0, 0.35))
             
@@ -202,6 +210,8 @@ def fetch_detail(url):
     max_retries = 2
     for attempt in range(max_retries):
         try:
+            if requests_cffi is None:
+                raise RuntimeError("缺少 curl_cffi 依赖，请先安装 requirements.txt")
             proxies = proxy_manager.get_proxy()
             r = requests_cffi.get(
                 url, 
@@ -476,6 +486,42 @@ def _uuid_from_download_url(url: str) -> str | None:
     return m.group(1) if m else None
 
 
+def extract_bizdownload_uuid(page_html: str) -> list[dict]:
+    """
+    兼容旧测试和历史调用：提取 class=bizDownload 且 id 为 UUID 的中央网附件链接。
+
+    返回字段保持旧格式：uuid、text、url。
+    """
+    records = []
+    seen = set()
+    if not page_html:
+        return records
+
+    for match in re.finditer(r"<a\b(?P<attrs>[^>]*)>(?P<text>.*?)</a>", page_html, re.I | re.DOTALL):
+        attrs = match.group("attrs") or ""
+        class_match = re.search(r"class=[\"']([^\"']*)[\"']", attrs, re.I)
+        if not class_match or "bizDownload" not in class_match.group(1):
+            continue
+
+        id_match = re.search(r"id=[\"']([0-9A-Fa-f]+)[\"']", attrs, re.I)
+        if not id_match:
+            continue
+
+        uuid = id_match.group(1)
+        if uuid in seen:
+            continue
+        seen.add(uuid)
+
+        text = _html_to_clean_text_simple(match.group("text") or "")
+        records.append({
+            "uuid": uuid,
+            "text": text,
+            "url": f"https://download.ccgp.gov.cn/oss/download?uuid={uuid}",
+        })
+
+    return records
+
+
 def extract_attachments_for_detail(page_html: str, page_url: str) -> list[dict]:
     """
     从详情页 HTML 提取附件：file_name、download_url、uuid（中央网 oss 链接常有）。
@@ -504,14 +550,16 @@ def extract_attachments_for_detail(page_html: str, page_url: str) -> list[dict]:
             }
         )
 
-    biz = _extract_element_by_id(page_html, "bizDownload")
-    if biz:
-        for m in re.finditer(
-            r'<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',
-            biz,
-            re.I | re.DOTALL,
-        ):
-            push(m.group(1), _html_to_clean_text_simple(m.group(2)))
+    for biz in extract_bizdownload_uuid(page_html):
+        download_url = biz["url"]
+        if download_url in seen:
+            continue
+        seen.add(download_url)
+        records.append({
+            "file_name": biz["text"] or biz["uuid"],
+            "download_url": download_url,
+            "uuid": biz["uuid"],
+        })
 
     for m in re.finditer(
         r'<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',
@@ -556,8 +604,12 @@ def parse_detail(html, url):
             data["budget"] = budget_match.group(1).strip()
             break
 
-    # 提取正文内容 - 使用 BeautifulSoup 处理嵌套标签
+    # 提取正文内容 - 优先使用 BeautifulSoup 处理嵌套标签；依赖缺失时降级为纯文本。
     content = ""
+    if BeautifulSoup is None:
+        data["content"] = _html_fragment_to_clean_text(html)
+        return data
+
     soup = BeautifulSoup(html, "html.parser")
 
     # 1. 优先提取 #noticeArea（政府采购网常见）

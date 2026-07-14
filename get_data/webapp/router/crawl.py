@@ -12,21 +12,25 @@ from src.config import LOGS_STREAM_DIR
 router = APIRouter(prefix="/api/crawl")
 
 class CrawlerWorkflowBody(BaseModel):
+    fetch_backend: str = Field("auto", description="traditional | smart | auto")
+    include_browser: bool = False
     keyword: str = ""
     base_url: str = ""
     delay_min: float = 2.0
     delay_max: float = 5.0
+    page_index: int = Field(1, ge=1)
     max_pages: int = 3
     timeout: int = 30
-    searchtype: str = "1"
+    searchtype: str = "2"
     bidSort: str = "0"
-    time_type: str = "2"
+    time_type: str = "4"
     start_time: str = ""
     end_time: str = ""
     detail_limit: int = 0  # 0 表示详情阶段不限制条数（爬完待爬列表）
-    detail_delay_min: float = 2.0
-    detail_delay_max: float = 5.0
+    detail_delay_min: float = 5.0
+    detail_delay_max: float = 12.0
     detail_timeout: int = 30
+    detail_workers: int = Field(2, ge=1, le=8)
     run_list: bool = True
     run_import: bool = True
     run_detail: bool = True

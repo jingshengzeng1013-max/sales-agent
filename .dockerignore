@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# 虚拟环境
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 日志
+get_data/logs/
+*.log
+
+# 备份文件（含真实数据，禁止上传）
+*.bak
+*.xlsx.bak
+*.jsonl.bak
+
+# 附件（60MB，不需要在 Railway 上部署）
+get_data/data/attachment/
+
+# HTML 缓存
+get_data/data/html/
+
+# 测试文件
+get_data/tests/
+test_*.py
+*_test.py
+
+# 临时文件
+*.tmp
+*.temp
+.DS_Store
+
+# Git
+.git/
+.gitignore
+
+# 文档（非必要）
+browser_screenshots/
+get_data/docs/
+get_data/scripts/
+
+# CodeBuddy
+.codebuddy/

@@ -87,13 +87,34 @@ class IndexBuilder:
         print(f" - 索引文件: {index_file}")
         print(f" - ID映射文件: {id_map_file}")
 
-if __name__ == "__main__":
+def build_arg_parser():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="构建产品/标讯 FAISS 索引")
+    parser.add_argument("--type", choices=["product", "tender", "all"], default="all", help="构建索引类型")
+    parser.add_argument(
+        "--product-input",
+        default=str(BASE_DIR / "data" / "embedding" / "product_embedded.jsonl"),
+        help="产品向量 JSONL 路径",
+    )
+    parser.add_argument(
+        "--tender-input",
+        default=str(BASE_DIR / "data" / "embedding" / "tenders_embedded.jsonl"),
+        help="标讯向量 JSONL 路径",
+    )
+    return parser
+
+
+def main(argv=None):
+    args = build_arg_parser().parse_args(argv)
     builder = IndexBuilder()
-    
-    # 1. 构建产品索引
-    product_data = BASE_DIR / "data/embedding/product_embedded.jsonl"
-    builder.build_index(str(product_data), INDEX_DIR, "product")
-    
-    # 2. 构建标讯索引
-    tender_data = BASE_DIR / "data/embedding/tenders_embedded.jsonl"
-    builder.build_index(str(tender_data), TENDER_INDEX_DIR, "tenders")
+
+    if args.type in {"product", "all"}:
+        builder.build_index(args.product_input, INDEX_DIR, "product")
+
+    if args.type in {"tender", "all"}:
+        builder.build_index(args.tender_input, TENDER_INDEX_DIR, "tenders")
+
+
+if __name__ == "__main__":
+    main()

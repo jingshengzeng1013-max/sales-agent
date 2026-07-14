@@ -34,8 +34,8 @@ python tests/etl/test_chunks_generation.py
 ### 运行所有测试
 
 ```bash
-# 使用 unittest
-python -m unittest discover -s tests
+# 使用 unittest（指定 top-level，避免模块名与 src 下包名冲突）
+python -m unittest discover -s tests -t .
 
 # 或使用 pytest（如果安装）
 pytest tests/

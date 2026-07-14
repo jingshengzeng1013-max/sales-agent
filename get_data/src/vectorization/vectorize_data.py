@@ -152,16 +152,43 @@ class Vectorizer:
         save_jsonl(tenders, output_path)
         print(f"[SUCCESS] 标讯向量化完成，保存至: {output_path}")
 
+def build_arg_parser():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="产品/标讯文本向量化")
+    parser.add_argument("--type", choices=["product", "tender", "all"], default="all", help="向量化数据类型")
+    parser.add_argument("--product-input", default=str(DATA_DIR / "product.jsonl"), help="产品 JSONL 输入路径")
+    parser.add_argument(
+        "--product-output",
+        default=str(DATA_DIR / "embedding" / "product_embedded.jsonl"),
+        help="产品向量输出路径",
+    )
+    parser.add_argument(
+        "--tender-input",
+        default=str(DATA_DIR / "output" / "etl" / "tenders_structured.jsonl"),
+        help="标讯结构化 JSONL 输入路径",
+    )
+    parser.add_argument(
+        "--tender-output",
+        default=str(DATA_DIR / "embedding" / "tenders_embedded.jsonl"),
+        help="标讯向量输出路径",
+    )
+    parser.add_argument("--base-url", default=None, help="覆盖 Embedding API base_url")
+    parser.add_argument("--api-key", default=None, help="覆盖 Embedding API key")
+    parser.add_argument("--model", default=None, help="覆盖 Embedding 模型")
+    return parser
+
+
+def main(argv=None):
+    args = build_arg_parser().parse_args(argv)
+    vectorizer = Vectorizer(base_url=args.base_url, api_key=args.api_key, model=args.model)
+
+    if args.type in {"product", "all"}:
+        vectorizer.vectorize_products(args.product_input, args.product_output)
+
+    if args.type in {"tender", "all"}:
+        vectorizer.vectorize_tenders(args.tender_input, args.tender_output)
+
+
 if __name__ == "__main__":
-    # 使用统一配置初始化
-    vectorizer = Vectorizer()
-    
-    # 向量化产品
-    product_in = "D:/sales_agent/get_data/data/product.jsonl"
-    product_out = "D:/sales_agent/get_data/data/embedding/product_embedded.jsonl"
-    vectorizer.vectorize_products(product_in, product_out)
-    
-    # 向量化标讯
-    tender_in = "D:/sales_agent/get_data/data/output/etl/tenders_structured.jsonl"
-    tender_out = "D:/sales_agent/get_data/data/embedding/tenders_embedded.jsonl"
-    vectorizer.vectorize_tenders(tender_in, tender_out)
+    main()
