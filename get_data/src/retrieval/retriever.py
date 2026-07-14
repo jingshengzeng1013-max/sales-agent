@@ -30,7 +30,12 @@ class DualRetriever:
         :param data_type: "product" 或 "tender"
         """
         self.data_type = data_type
-        self.vectorizer = Vectorizer()
+        # 初始化 vectorizer，但如果 Embedding API 不可达则设为 None
+        try:
+            self.vectorizer = Vectorizer()
+        except Exception as e:
+            logger.warning(f"Vectorizer 初始化失败，向量检索将仅使用预存 embedding: {e}")
+            self.vectorizer = None
         self.dimension = EMBEDDING_CONFIG.get("dimension", 1024)
         
         # 设置路径
@@ -185,9 +190,13 @@ class DualRetriever:
             else:
                 if query_vector is None:
                     if self.vectorizer is None:
-                        logger.warning("向量检索已启用，但 vectorizer 未初始化")
+                        logger.warning("向量检索已启用，但 vectorizer 未初始化，跳过向量检索")
                     else:
-                        query_vector = np.array(self.vectorizer.get_embeddings([query_text])).astype('float32')
+                        try:
+                            query_vector = np.array(self.vectorizer.get_embeddings([query_text])).astype('float32')
+                        except Exception as e:
+                            logger.warning(f"Embedding API 调用失败，跳过向量检索: {e}")
+                            query_vector = None
 
                 if query_vector is not None:
                     faiss.normalize_L2(query_vector)
