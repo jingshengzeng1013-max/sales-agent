@@ -8,7 +8,7 @@ WORKDIR /app
 
 # 安装系统依赖
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc g++ curl libgl1-mesa-glx libglib2.0-0 \
+    gcc g++ curl libgl1 libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # 安装 Python 依赖（精简，排除爬虫/streamlit 等不需要的包）
