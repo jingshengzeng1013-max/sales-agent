@@ -23,7 +23,7 @@ RUN pip install --no-cache-dir \
     jieba==0.42.1 \
     rank-bm25==0.2.2 \
     pandas==2.2.3 \
-    openpyxl==3.2.0 \
+    openpyxl==3.1.5 \
     beautifulsoup4==4.13.3 \
     requests==2.33.1 \
     httpx==0.30.0 \
