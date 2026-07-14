@@ -1,5 +1,4 @@
 [deploy]
-startCommand = "cd /app && python webapp/server_fastapi.py"
 healthcheckPath = "/"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"
