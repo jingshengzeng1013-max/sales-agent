@@ -17,7 +17,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.append(str(BASE_DIR))
 
-from src.config import LOCAL_LLM_CONFIG, DB_PATH
+from src.config import get_llm_config, DB_PATH
 from src.utils.jsonl_helper import load_jsonl, save_jsonl
 
 # 尝试导入依赖
@@ -52,13 +52,14 @@ ATTACHMENTS_DIR = BASE_DIR / "data" / "attachment"
 
 
 def get_local_llm_client():
-    """获取本地 LLM 客户端"""
+    """获取 LLM 客户端"""
     if not HAS_OPENAI:
         return None
+    llm_config = get_llm_config()
     return OpenAI(
-        api_key=LOCAL_LLM_CONFIG.get("api_key", "local-api-key"),
-        base_url=LOCAL_LLM_CONFIG["base_url"],
-        timeout=LOCAL_LLM_CONFIG.get("timeout", 600)
+        api_key=llm_config.get("api_key", ""),
+        base_url=llm_config["base_url"],
+        timeout=llm_config.get("timeout", 120)
     )
 
 
@@ -217,7 +218,7 @@ def extract_tables_with_vision(images: list, file_name: str = "", tender_id: str
 
     try:
         response = client.chat.completions.create(
-            model=LOCAL_LLM_CONFIG["model"],
+            model=get_llm_config()["model"],
             messages=messages,
             temperature=0.1,
             max_tokens=4000
@@ -349,7 +350,7 @@ def extract_text_with_llm(text_content: str, file_name: str = "", tender_id: str
 
     try:
         response = client.chat.completions.create(
-            model=LOCAL_LLM_CONFIG["model"],
+            model=get_llm_config()["model"],
             messages=[{"role": "user", "content": prompt}],
             temperature=0.1,
             max_tokens=3000

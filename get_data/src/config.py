@@ -21,43 +21,6 @@ HTML_DIR = DATA_DIR / "html"
 # 数据库路径
 DB_PATH = DATA_DIR / "ccgp_data.db"
 
-# 阿里云 DashScope 配置
-# 文档：https://help.aliyun.com/zh/dashscope/
-# 北京地域 base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
-DASHSCOPE_CONFIG = {
-    "api_key": os.environ.get("DASHSCOPE_API_KEY", ""),
-    "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    "model": "qwen3.5-plus",  # 通义千问 3.5 Plus
-    "timeout": 120,
-}
-
-# DeepSeek 配置（官方 API）
-# 定价参考：https://platform.deepseek.com/pricing
-# 输入（缓存命中）：0.2 元/1M tokens
-# 输入（缓存未命中）：2 元/1M tokens
-# 输出：3 元/1M tokens
-DEEPSEEK_CONFIG = {
-    "api_key": os.environ.get("DEEPSEEK_API_KEY", ""),
-    "base_url": "https://api.deepseek.com/v1",
-    "model": "deepseek-chat",
-    "timeout": 120,
-    # 定价（元/1M tokens）
-    "pricing": {
-        "input_cache_hit": 0.2,    # 输入（缓存命中）
-        "input_cache_miss": 2.0,   # 输入（缓存未命中）
-        "output": 3.0,             # 输出
-    }
-}
-
-# 字节跳动豆包配置（Volcengine Ark）
-# 定价参考：https://www.volcengine.com/docs/82379/1099320
-DOUBAO_CONFIG = {
-    "api_key": os.environ.get("ARK_API_KEY", ""),
-    "base_url": "https://ark.cn-beijing.volces.com/api/v3",
-    "model": "doubao-seed-2-0-lite-260215",  # 豆包 Seed 2.0 Lite
-    "timeout": 120,
-}
-
 # MiniMax 配置（OpenAI 兼容接口）
 # 文档：https://platform.minimaxi.com/
 MINIMAX_CONFIG = {
@@ -70,42 +33,20 @@ MINIMAX_CONFIG = {
     "timeout": 120,
 }
 
-# 本地 LLM（OpenAI 兼容，如 vLLM / SGLang；base_url 需含 /v1）
-LOCAL_LLM_CONFIG = {
-    "api_key": os.environ.get("LOCAL_LLM_API_KEY", "local-api-key"),
-    "base_url": os.environ.get(
-        "LOCAL_LLM_BASE_URL", "http://10.210.10.51:8001/v1"
-    ).rstrip("/"),
-    "model": os.environ.get("LOCAL_LLM_MODEL", "/models/Qwen3.5-27B"),
-    "timeout": int(os.environ.get("LOCAL_LLM_TIMEOUT", "600")),
-}
-
 
 # =============================================================================
 # 统一模型配置管理
 # =============================================================================
 
-# 所有模型配置映射（可通过模型名称获取配置）
 LLM_PROVIDERS = {
     "minimax": {
         "name": "MiniMax",
         "config": MINIMAX_CONFIG,
         "env_key": "MINIMAX_API_KEY",
     },
-    "local": {
-        "name": "Local OpenAI-compatible",
-        "config": LOCAL_LLM_CONFIG,
-        "env_key": None,
-    },
-    "deepseek": {
-        "name": "DeepSeek",
-        "config": DEEPSEEK_CONFIG,
-        "env_key": "DEEPSEEK_API_KEY",
-    },
 }
 
-# 默认使用的模型提供商（可用环境变量 LLM_PROVIDER=minimax 切换）
-DEFAULT_PROVIDER = os.environ.get("LLM_PROVIDER", "minimax")
+DEFAULT_PROVIDER = "minimax"
 
 
 def get_llm_config(provider=None):
@@ -206,18 +147,11 @@ CUSTOMER_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 ATTACHMENT_DIR = DATA_DIR / "attachment"
 ATTACHMENT_DIR.mkdir(parents=True, exist_ok=True)
 
-# 通义千问配置（从环境变量读取）
-QWEN_CONFIG = {
-    "api_key": os.environ.get("DASHSCOPE_API_KEY", ""),
-    "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    "model": "qwen3.5-plus",
-    "timeout": 120,
-}
-
 # Embedding API 配置（用于向量检索）
+# Railway 上不可达时自动降级为纯 BM25 检索
 EMBEDDING_CONFIG = {
-    "base_url": os.environ.get("EMBEDDING_BASE_URL", "http://10.210.10.51:8022/v1").rstrip("/"),
-    "model": os.environ.get("EMBEDDING_MODEL", "/models/Qwen3-Embedding-0.6B"),
+    "base_url": os.environ.get("EMBEDDING_BASE_URL", "https://api.minimaxi.com/v1").rstrip("/"),
+    "model": os.environ.get("EMBEDDING_MODEL", "embo-01"),
     "dimension": int(os.environ.get("EMBEDDING_DIMENSION", "1024")),
 }
 

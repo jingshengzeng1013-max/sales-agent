@@ -13,7 +13,7 @@ import json
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 src_dir = os.path.join(project_root, 'src')
 sys.path.insert(0, src_dir)
-from config import DASHSCOPE_CONFIG
+from config import get_llm_config
 
 # 尝试导入 openai（阿里云 DashScope 使用 OpenAI 兼容接口）
 try:
@@ -25,17 +25,18 @@ except ImportError:
 
 
 def get_client(api_key=None):
-    """获取 DashScope 客户端"""
+    """获取 LLM 客户端"""
     if not HAS_OPENAI:
         return None
 
-    api_key = api_key or DASHSCOPE_CONFIG.get('api_key')
+    llm_config = get_llm_config()
+    api_key = api_key or llm_config.get('api_key')
     if not api_key:
         print("[WARN] 未配置 API Key")
         return None
 
-    base_url = DASHSCOPE_CONFIG.get('base_url')
-    timeout = DASHSCOPE_CONFIG.get('timeout', 60)
+    base_url = llm_config.get('base_url')
+    timeout = llm_config.get('timeout', 120)
 
     return OpenAI(api_key=api_key, base_url=base_url, timeout=timeout)
 
@@ -57,7 +58,7 @@ def chat_completion(messages, model=None, api_key=None, **kwargs):
     if not client:
         return None
 
-    model = model or DASHSCOPE_CONFIG.get('model', 'qwen-plus')
+    model = model or get_llm_config().get('model', 'MiniMax-M3')
     temperature = kwargs.get('temperature', 0.1)
     max_tokens = kwargs.get('max_tokens', 2000)
 
