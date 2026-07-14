@@ -12,7 +12,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # 安装 Python 依赖（精简，排除爬虫/streamlit 等不需要的包）
-# 分步安装：先装编译依赖重的包，再装其余的
 RUN pip install --no-cache-dir numpy==1.26.4
 RUN pip install --no-cache-dir faiss-cpu==1.9.0
 RUN pip install --no-cache-dir \
@@ -43,16 +42,9 @@ RUN cp -r /app/data /app/data_seed
 COPY start_railway.sh /app/start_railway.sh
 RUN chmod +x /app/start_railway.sh
 
-# 环境变量
-ENV PORT=8103
+# 环境变量（Railway 会覆盖 PORT）
 ENV SALES_AGENT_BASE_DIR=/app
 ENV LLM_PROVIDER=minimax
 
-EXPOSE ${PORT}
-
-# 健康检查
-HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD curl -f http://localhost:${PORT}/ || exit 1
-
-# 启动
+# 启动（不设固定 PORT，由 Railway 注入）
 CMD ["/app/start_railway.sh"]
