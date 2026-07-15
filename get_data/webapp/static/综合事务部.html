@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>综合事务部考勤报表（脱敏）</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f0f2f5; color: #262626; padding: 24px; }
+  h1 { font-size: 22px; margin-bottom: 16px; color: #1677ff; }
+  .info { background: #e6f4ff; border: 1px solid #91caff; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; font-size: 14px; color: #003eb3; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 6px rgba(0,0,0,0.08); font-size: 13px; }
+  thead th { background: #1677ff; color: #fff; padding: 10px 12px; text-align: left; white-space: nowrap; position: sticky; top: 0; }
+  tbody td { padding: 8px 12px; border-bottom: 1px solid #f0f0f0; white-space: nowrap; }
+  tbody tr:hover { background: #f5f5f5; }
+  tbody tr:last-child td { border-bottom: none; }
+  .footer { margin-top: 16px; font-size: 12px; color: #8c8c8c; }
+</style>
+</head>
+<body>
+<h1>综合事务部考勤报表</h1>
+<div class="info">⚠️ 本数据已脱敏，姓名、部门、人员类别均为虚构信息，仅供演示展示。</div>
+<table>
+  <thead><tr>
+    <th>序号</th>
+    <th>姓名</th>
+    <th>一级部门</th>
+    <th>二级部门</th>
+    <th>人员类别</th>
+    <th>工作时长</th>
+    <th>旷工次数</th>
+    <th>旷工时长(分钟)</th>
+    <th>迟到/早退次数</th>
+    <th>迟到/早退时长(分钟)</th>
+    <th>缺卡次数</th>
+    <th>备注</th>
+  </tr></thead>
+<tbody>
+  <tr>
+    <td>1</td>
+    <td>王刚</td>
+    <td>综合管理部</td>
+    <td>人力资源部</td>
+    <td>全职员工</td>
+    <td>8.05</td>
+    <td>1</td>
+    <td>450</td>
+    <td>5</td>
+    <td>23</td>
+    <td>1</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td>2</td>
+    <td>秦丽</td>
+    <td>综合管理部</td>
+    <td></td>
+    <td>实习生</td>
+    <td>7.39</td>
+    <td>7</td>
+    <td>3150</td>
+    <td>4</td>
+    <td>193</td>
+    <td>2</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td>3</td>
+    <td>冯霞</td>
+    <td>综合管理部</td>
+    <td>人力资源部</td>
+    <td>外包人员</td>
+    <td>9.09</td>
+    <td>0</td>
+    <td>0</td>
+    <td>0</td>
+    <td>0</td>
+    <td>1</td>
+    <td>12.18离职</td>
+  </tr>
+  <tr>
+    <td>4</td>
+    <td>吴芳伟</td>
+    <td>综合管理部</td>
+    <td>行政事务部</td>
+    <td>全职员工</td>
+    <td>8.26</td>
+    <td>0</td>
+    <td>0</td>
+    <td>2</td>
+    <td>5</td>
+    <td>0</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td>5</td>
+    <td>吴丽</td>
+    <td>综合管理部</td>
+    <td>人力资源部</td>
+    <td>全职员工</td>
+    <td>9.46</td>
+    <td>0</td>
+    <td>0</td>
+    <td>3</td>
+    <td>14</td>
+    <td>0</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td>6</td>
+    <td>钱平</td>
+    <td>综合管理部</td>
+    <td>人力资源部</td>
+    <td>全职员工</td>
+    <td>9.84</td>
+    <td>0</td>
+    <td>0</td>
+    <td>0</td>
+    <td>0</td>
+    <td>0</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td>7</td>
+    <td>严杰</td>
+    <td>综合管理部</td>
+    <td></td>
+    <td>全职员工</td>
+    <td>8.06</td>
+    <td>0</td>
+    <td>0</td>
+    <td>0</td>
+    <td>0</td>
+    <td>0</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td>8</td>
+    <td>秦桂</td>
+    <td>综合管理部</td>
+    <td></td>
+    <td>实习生</td>
+    <td>7.73</td>
+    <td>0</td>
+    <td>0</td>
+    <td>0</td>
+    <td>0</td>
+    <td>0</td>
+    <td></td>
+  </tr>
+</tbody>
+</table>
+<div class="footer">数据已脱敏 · 仅供演示 · 生成于 2026-07-15</div>
+</body>
+</html>
